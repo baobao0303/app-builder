@@ -1,0 +1,102 @@
+<div class="tabs">
+  <div class="tab-headers">
+    <button
+      class="tab-header"
+      [class.active]="activeTab === 'regular'"
+      (click)="activeTab = 'regular'"
+    >
+      Regular
+    </button>
+    <button
+      class="tab-header"
+      [class.active]="activeTab === 'symbols'"
+      (click)="activeTab = 'symbols'"
+    >
+      Symbols
+    </button>
+  </div>
+  <div class="tab-content">
+    <div *ngIf="activeTab === 'regular'" class="tab-panel">
+      <!-- Basic Dropdown -->
+      <div class="dropdown">
+        <button class="dropdown-header" (click)="toggleDropdown('basic')">
+          <span>Basic</span>
+          <span class="dropdown-icon" [class.open]="openedDropdowns['basic']">▼</span>
+        </button>
+        <div class="dropdown-content" *ngIf="openedDropdowns['basic']">
+          <div
+            *ngFor="let it of regularCategories.basic"
+            draggable="true"
+            (dragstart)="onDragStart($event, it.key)"
+            class="draggable-item"
+          >
+            {{ it.label }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Forms Dropdown -->
+      <div class="dropdown">
+        <button class="dropdown-header" (click)="toggleDropdown('forms')">
+          <span>Forms</span>
+          <span class="dropdown-icon" [class.open]="openedDropdowns['forms']">▼</span>
+        </button>
+        <div class="dropdown-content" *ngIf="openedDropdowns['forms']">
+          <div
+            *ngFor="let it of regularCategories.forms"
+            draggable="true"
+            (dragstart)="onDragStart($event, it.key)"
+            class="draggable-item"
+          >
+            {{ it.label }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Extra Dropdown -->
+      <div class="dropdown">
+        <button class="dropdown-header" (click)="toggleDropdown('extra')">
+          <span>Extra</span>
+          <span class="dropdown-icon" [class.open]="openedDropdowns['extra']">▼</span>
+        </button>
+        <div class="dropdown-content" *ngIf="openedDropdowns['extra']">
+          <div
+            *ngFor="let it of regularCategories.extra"
+            draggable="true"
+            (dragstart)="onDragStart($event, it.key)"
+            class="draggable-item"
+          >
+            {{ it.label }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Layout Dropdown -->
+      <div class="dropdown">
+        <button class="dropdown-header" (click)="toggleDropdown('layout')">
+          <span>Layout</span>
+          <span class="dropdown-icon" [class.open]="openedDropdowns['layout']">▼</span>
+        </button>
+        <div class="dropdown-content" *ngIf="openedDropdowns['layout']">
+          <div
+            *ngFor="let it of regularCategories.layout"
+            draggable="true"
+            (dragstart)="onDragStart($event, it.key)"
+            class="draggable-item"
+          >
+            {{ it.label }}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div *ngIf="activeTab === 'symbols'" class="tab-panel">
+      <div
+        *ngFor="let it of symbolItems"
+        draggable="true"
+        (dragstart)="onDragStart($event, it.key)"
+      >
+        {{ it.label }}
+      </div>
+    </div>
+  </div>
+</div>

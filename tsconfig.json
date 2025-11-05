@@ -3,6 +3,11 @@
 {
   "compileOnSave": false,
   "compilerOptions": {
+    "paths": {
+      "builder": [
+        "./projects/builder/src/public-api"
+      ]
+    },
     "strict": true,
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
@@ -29,6 +34,12 @@
     },
     {
       "path": "./tsconfig.spec.json"
+    },
+    {
+      "path": "./projects/builder/tsconfig.lib.json"
+    },
+    {
+      "path": "./projects/builder/tsconfig.spec.json"
     }
   ]
 }

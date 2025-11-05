@@ -1,0 +1,21 @@
+<div class="assets-panel">
+  <div class="header">
+    <span>Assets</span>
+    <label class="upload">
+      <input type="file" (change)="onFileChange($event)" />
+      Upload
+    </label>
+  </div>
+
+  <div class="grid">
+    <div class="item" *ngFor="let a of list">
+      <img *ngIf="a.type === 'image'" [src]="a.src" [alt]="a.name || a.id" />
+      <div class="file" *ngIf="a.type !== 'image'">
+        {{ a.name || a.id }}
+      </div>
+      <button class="remove" (click)="remove(a.id)">×</button>
+    </div>
+  </div>
+</div>
+
+

@@ -1,0 +1,15 @@
+<ng-container *ngIf="state$ | async as s">
+  <div class="modal-backdrop" *ngIf="s.open" (click)="s.closeOnBackdrop ? close() : null"></div>
+  <div class="modal" *ngIf="s.open">
+    <div class="modal-header">
+      <div class="title">{{ s.title || 'Dialog' }}</div>
+      <button type="button" class="close" (click)="close()">×</button>
+    </div>
+    <div class="modal-body">
+      <ng-container #modalBody></ng-container>
+    </div>
+    <div class="modal-footer">
+      <button type="button" (click)="close()">Close</button>
+    </div>
+  </div>
+</ng-container>

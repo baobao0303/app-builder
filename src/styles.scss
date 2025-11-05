@@ -1,1 +1,41 @@
 /* You can add global styles to this file, and also import other style files */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Override PrimeNG theme colors to prevent font color conflicts */
+:root {
+  --p-text-color: #333333;
+  --p-text-muted-color: #666666;
+  --p-content-border-color: #dddddd;
+}
+
+/* Ensure default text color is not affected by PrimeNG */
+body,
+html {
+  color: #333333 !important;
+}
+
+/* Override PrimeNG component text colors */
+.p-tabview,
+.p-tabview-nav,
+.p-tabview-panels,
+.p-tabview-panel,
+.p-tabview-nav li,
+.p-tabview-nav-link {
+  color: #333333 !important;
+}
+
+/* Ensure all text in components maintains original color */
+* {
+  color: inherit;
+}
+
+/* Specific overrides for PrimeNG tabs */
+.p-tabview .p-tabview-nav li .p-tabview-nav-link {
+  color: #333333 !important;
+}
+
+.p-tabview .p-tabview-nav li.p-highlight .p-tabview-nav-link {
+  color: #1976d2 !important;
+}

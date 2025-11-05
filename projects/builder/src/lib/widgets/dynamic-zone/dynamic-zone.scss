@@ -1,0 +1,68 @@
+/* Highlight tối giản khi kéo vào vùng thả */
+.drag-over {
+  background-color: rgba(59, 130, 246, 0.15); /* nhạt để dễ nhìn, không ảnh hưởng layout */
+}
+
+/* Items inside DynamicZone */
+.dz-item {
+  position: relative;
+}
+
+.dz-selected {
+  outline: 2px solid #3b82f6; /* blue-500 */
+  outline-offset: 2px;
+}
+
+.dz-selected::after {
+  content: '';
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 8px;
+  height: 8px;
+  background: #3b82f6;
+  border-radius: 2px; /* simple handle marker */
+}
+
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.dz-host {
+  min-height: 100%;
+  border: 1px dashed transparent;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start;
+  gap: 8px;
+  padding-bottom: 100px;
+  position: relative;
+}
+
+.dz-host::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  pointer-events: none;
+}
+
+.dz-host.drag-over {
+  border-color: #93c5fd; /* blue-300 */
+}
+
+.dz-body-drag {
+  outline: 2px solid #3b97e3 !important;
+  outline-offset: -2px;
+}
+
+/* Ensure every dropped item behaves like a block row */
+.dz-item,
+.dz-item > * {
+  display: block;
+  width: 100%;
+}

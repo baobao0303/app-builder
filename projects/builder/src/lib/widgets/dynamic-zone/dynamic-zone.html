@@ -1,0 +1,11 @@
+<div
+  #host
+  class="dz-host flex flex-col items-start gap-2"
+  [class.drag-over]="isDragOver"
+  (dragover)="onDragOver($event)"
+  (dragenter)="onDragEnter($event)"
+  (dragleave)="onDragLeave()"
+  (drop)="onDrop($event)"
+>
+  <ng-template #container></ng-template>
+</div>
