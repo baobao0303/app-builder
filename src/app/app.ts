@@ -515,50 +515,57 @@ export class App {
     // 現在のページでTailwind CSSがロードされている場合、そのスタイルシートからCSSを取得
     let css = '';
     try {
-      // まず、すべてのスタイルシートをチェック
+      // まず、すべてのスタイルシートをチェック（より積極的に）
       const styleSheets = Array.from(document.styleSheets);
       for (const sheet of styleSheets) {
         try {
           let isTailwindSheet = false;
+          let sheetContent = '';
 
           // Tailwind CDNのスタイルシートをチェック
           if (sheet.href && sheet.href.includes('tailwindcss.com')) {
             isTailwindSheet = true;
           }
 
-          // インラインスタイルシートの場合、Tailwindパターンをチェック
-          if (!sheet.href) {
-            const rules = Array.from(sheet.cssRules || []);
-            // 最初の数個のルールをチェックしてTailwindかどうか判定
-            for (let i = 0; i < Math.min(10, rules.length); i++) {
-              if (rules[i].cssText && this.isTailwindRule(rules[i].cssText)) {
-                isTailwindSheet = true;
-                break;
-              }
-            }
-          }
-
-          if (isTailwindSheet) {
+          // スタイルシートの内容を取得
+          try {
             const rules = Array.from(sheet.cssRules || []);
             rules.forEach((rule) => {
               if (rule.cssText) {
-                css += rule.cssText + '\n';
+                sheetContent += rule.cssText + '\n';
               }
             });
+
+            // インラインスタイルシートの場合、Tailwindパターンをチェック
+            if (!sheet.href && sheetContent) {
+              // より包括的なチェック：色関連のクラスやユーティリティクラスが含まれているか
+              if (this.isTailwindRule(sheetContent) || this.containsTailwindClasses(sheetContent)) {
+                isTailwindSheet = true;
+              }
+            }
+          } catch (ruleError) {
+            // ルールにアクセスできない場合は、fetchで取得を試みる
           }
-        } catch (e) {
-          // Cross-origin stylesheetのエラーを無視して、fetchで取得を試みる
-          if (sheet.href && !sheet.href.startsWith('data:')) {
+
+          if (isTailwindSheet && sheetContent) {
+            css += sheetContent;
+          } else if (sheet.href && !sheet.href.startsWith('data:')) {
+            // Cross-origin stylesheetのエラーを無視して、fetchで取得を試みる
             try {
-              const response = await fetch(sheet.href);
+              const fullUrl = sheet.href.startsWith('http')
+                ? sheet.href
+                : new URL(sheet.href, window.location.origin).href;
+              const response = await fetch(fullUrl);
               const text = await response.text();
-              if (this.isTailwindRule(text)) {
+              if (this.isTailwindRule(text) || this.containsTailwindClasses(text)) {
                 css += text + '\n';
               }
             } catch (fetchError) {
               // fetchも失敗した場合は無視
             }
           }
+        } catch (e) {
+          // エラーは無視して続行
         }
       }
 
@@ -567,14 +574,17 @@ export class App {
         const styleTags = document.querySelectorAll('style');
         styleTags.forEach((tag) => {
           const styleText = tag.textContent || tag.innerHTML;
-          if (styleText && this.isTailwindRule(styleText)) {
+          if (
+            styleText &&
+            (this.isTailwindRule(styleText) || this.containsTailwindClasses(styleText))
+          ) {
             css += styleText + '\n';
           }
         });
       }
 
       // まだ取得できていない場合、<link>タグからCSSファイルを取得
-      if (!css) {
+      if (!css || css.length < 1000) {
         const linkTags = document.querySelectorAll('link[rel="stylesheet"]');
         for (const link of Array.from(linkTags)) {
           const href = link.getAttribute('href');
@@ -585,8 +595,9 @@ export class App {
                 : new URL(href, window.location.origin).href;
               const response = await fetch(fullUrl);
               const text = await response.text();
-              if (this.isTailwindRule(text)) {
+              if (this.isTailwindRule(text) || this.containsTailwindClasses(text)) {
                 css += text + '\n';
+                break; // 最初のTailwind CSSファイルが見つかったら終了
               }
             } catch (fetchError) {
               // fetch失敗は無視
@@ -602,6 +613,38 @@ export class App {
     return css;
   }
 
+  private containsTailwindClasses(cssText: string): boolean {
+    if (!cssText || cssText.length < 50) return false;
+
+    // Tailwindクラスのパターンをチェック（より包括的に）
+    const tailwindPatterns = [
+      // ユーティリティクラス
+      /\.(p|m|w|h|text|bg|border|rounded|flex|grid|space|gap|mt|mb|ml|mr|mx|my|pt|pb|pl|pr|px|py|mb|mt|ml|mr|mx|my)-\d+/,
+      // 色クラス
+      /\.(bg|text|border)-(blue|red|green|yellow|gray|slate|zinc|neutral|stone|orange|amber|lime|emerald|teal|cyan|sky|indigo|violet|purple|fuchsia|pink|rose)-\d+/,
+      // テキストサイズ
+      /\.text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl)/,
+      // その他のTailwindユーティリティ
+      /\.(flex|grid|hidden|block|inline|relative|absolute|fixed|sticky)/,
+      /\.(rounded|border|shadow|opacity|transition|transform)/,
+      // Tailwind変数
+      /--tw-/,
+      // Tailwind特有のセレクター構造
+      /\[&>.*\]/,
+    ];
+
+    // 複数のパターンに一致するかチェック
+    let matchCount = 0;
+    for (const pattern of tailwindPatterns) {
+      if (pattern.test(cssText)) {
+        matchCount++;
+        if (matchCount >= 2) return true; // 2つ以上のパターンに一致すればTailwindと判定
+      }
+    }
+
+    return false;
+  }
+
   private isTailwindRule(cssText: string): boolean {
     // Tailwind CSSの特徴的なパターンをチェック
     if (!cssText || cssText.length < 10) return false;
@@ -611,14 +654,16 @@ export class App {
       cssText.includes('--tw-translate') ||
       cssText.includes('--tw-rotate') ||
       cssText.includes('--tw-scale') ||
+      cssText.includes('--tw-') || // より広範囲なTailwind変数のチェック
       cssText.includes('tailwindcss') ||
       /\.(p|m|w|h|text|bg|border|rounded|flex|grid|space|gap|mt|mb|ml|mr|mx|my|pt|pb|pl|pr|px|py)-\d+/.test(
         cssText
       ) ||
       /\.(text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl))/.test(cssText) ||
-      /\.(bg-(blue|red|green|yellow|gray|slate|zinc|neutral|stone|orange|amber|lime|emerald|teal|cyan|sky|indigo|violet|purple|fuchsia|pink|rose)-\d+)/.test(
+      /\.(bg|text|border)-(blue|red|green|yellow|gray|slate|zinc|neutral|stone|orange|amber|lime|emerald|teal|cyan|sky|indigo|violet|purple|fuchsia|pink|rose)-\d+/.test(
         cssText
-      )
+      ) ||
+      this.containsTailwindClasses(cssText)
     );
   }
 
