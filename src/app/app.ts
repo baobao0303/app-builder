@@ -477,212 +477,173 @@ export class App {
   protected async exportWithTailwind(): Promise<void> {
     if (!this.dz) return;
     const inner = this.dz.exportHtml();
+    const domStyles = this.dz.exportStyles();
+    const editorCss = this.editorService.getCss();
 
-    // collectUsedClassesを使って使用されているクラスを収集
+    // Dùng collectUsedClasses từ @css để thu thập class đang dùng
     const usedClasses = collectUsedClasses(inner);
 
-    // 現在のページでTailwind CDNがロードされている場合、そのCSSを取得
+    // Lấy Tailwind CSS từ page (từ styleSheets, style tags, link tags)
     const tailwindCss = await this.getTailwindCssFromPage();
 
-    // 使用されているクラスだけをパージ
-    const purgedCss = tailwindCss
-      ? purgeTailwindCss({
-          tailwindCss,
-          usedClasses,
-        })
-      : '';
+    if (tailwindCss) {
+      // Dùng purgeTailwindCss từ @css để purge CSS
+      const purgedCss = purgeTailwindCss({
+        tailwindCss,
+        usedClasses,
+      });
 
-    const domStyles = this.dz.exportStyles();
-    const combinedCss = `${purgedCss}\n${domStyles}`;
+      const combinedCss = `${purgedCss}\n${editorCss}\n${domStyles}`;
 
-    // Build HTML with inline CSS (no CDN)
-    const doc = this.codeManager.buildHtmlDocument({
-      html: inner,
-      css: combinedCss,
-      title: 'Export Tailwind',
-    });
+      // Build HTML với CSS đã purge (không cần CDN)
+      const doc = this.codeManager.buildHtmlDocument({
+        html: inner,
+        css: combinedCss,
+        title: 'Export Tailwind',
+      });
 
-    const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'index.html';
-    a.click();
-    URL.revokeObjectURL(url);
+      const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'index.html';
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      // Fallback: nếu không lấy được CSS, dùng CDN
+      let doc = this.codeManager.buildHtmlDocument({
+        html: inner,
+        css: `${editorCss}\n${domStyles}`,
+        title: 'Export Tailwind',
+      });
+      doc = doc.replace('</head>', '<script src="https://cdn.tailwindcss.com"></script></head>');
+
+      const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'index.html';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
   }
 
   private async getTailwindCssFromPage(): Promise<string> {
-    // 現在のページでTailwind CSSがロードされている場合、そのスタイルシートからCSSを取得
     let css = '';
+    const collectedUrls = new Set<string>();
+
     try {
-      // まず、すべてのスタイルシートをチェック（より積極的に）
+      // Lấy CSS từ styleSheets
       const styleSheets = Array.from(document.styleSheets);
       for (const sheet of styleSheets) {
         try {
-          let isTailwindSheet = false;
-          let sheetContent = '';
+          const sheetUrl = sheet.href || '';
 
-          // Tailwind CDNのスタイルシートをチェック
-          if (sheet.href && sheet.href.includes('tailwindcss.com')) {
-            isTailwindSheet = true;
-          }
-
-          // スタイルシートの内容を取得
-          try {
-            const rules = Array.from(sheet.cssRules || []);
-            rules.forEach((rule) => {
-              if (rule.cssText) {
-                sheetContent += rule.cssText + '\n';
-              }
-            });
-
-            // インラインスタイルシートの場合、Tailwindパターンをチェック
-            if (!sheet.href && sheetContent) {
-              // より包括的なチェック：色関連のクラスやユーティリティクラスが含まれているか
-              if (this.isTailwindRule(sheetContent) || this.containsTailwindClasses(sheetContent)) {
-                isTailwindSheet = true;
-              }
-            }
-          } catch (ruleError) {
-            // ルールにアクセスできない場合は、fetchで取得を試みる
-          }
-
-          if (isTailwindSheet && sheetContent) {
-            css += sheetContent;
-          } else if (sheet.href && !sheet.href.startsWith('data:')) {
-            // Cross-origin stylesheetのエラーを無視して、fetchで取得を試みる
+          if (!sheetUrl) {
+            // Inline stylesheet
             try {
-              const fullUrl = sheet.href.startsWith('http')
-                ? sheet.href
-                : new URL(sheet.href, window.location.origin).href;
+              const rules = Array.from(sheet.cssRules || []);
+              rules.forEach((rule) => {
+                if (rule.cssText) {
+                  css += rule.cssText + '\n';
+                }
+              });
+            } catch (ruleError) {
+              // CORS error - ignore
+            }
+          } else if (!collectedUrls.has(sheetUrl)) {
+            // External stylesheet
+            try {
+              const fullUrl = sheetUrl.startsWith('http')
+                ? sheetUrl
+                : new URL(sheetUrl, window.location.origin).href;
               const response = await fetch(fullUrl);
               const text = await response.text();
-              if (this.isTailwindRule(text) || this.containsTailwindClasses(text)) {
-                css += text + '\n';
-              }
+              css += text + '\n';
+              collectedUrls.add(sheetUrl);
             } catch (fetchError) {
-              // fetchも失敗した場合は無視
+              // Fetch failed - ignore
             }
           }
         } catch (e) {
-          // エラーは無視して続行
+          // Ignore errors
         }
       }
 
-      // スタイルシートから取得できない場合、<style>タグから直接取得
-      if (!css) {
-        const styleTags = document.querySelectorAll('style');
-        styleTags.forEach((tag) => {
-          const styleText = tag.textContent || tag.innerHTML;
-          if (
-            styleText &&
-            (this.isTailwindRule(styleText) || this.containsTailwindClasses(styleText))
-          ) {
-            css += styleText + '\n';
-          }
-        });
-      }
+      // Lấy CSS từ <style> tags
+      const styleTags = document.querySelectorAll('style');
+      styleTags.forEach((tag) => {
+        const styleText = tag.textContent || tag.innerHTML;
+        if (styleText) {
+          css += styleText + '\n';
+        }
+      });
 
-      // まだ取得できていない場合、<link>タグからCSSファイルを取得
-      if (!css || css.length < 1000) {
-        const linkTags = document.querySelectorAll('link[rel="stylesheet"]');
-        for (const link of Array.from(linkTags)) {
-          const href = link.getAttribute('href');
-          if (href && !href.startsWith('data:')) {
-            try {
-              const fullUrl = href.startsWith('http')
-                ? href
-                : new URL(href, window.location.origin).href;
-              const response = await fetch(fullUrl);
-              const text = await response.text();
-              if (this.isTailwindRule(text) || this.containsTailwindClasses(text)) {
-                css += text + '\n';
-                break; // 最初のTailwind CSSファイルが見つかったら終了
-              }
-            } catch (fetchError) {
-              // fetch失敗は無視
-            }
+      // Lấy CSS từ <link> tags
+      const linkTags = document.querySelectorAll('link[rel="stylesheet"]');
+      for (const link of Array.from(linkTags)) {
+        const href = link.getAttribute('href');
+        if (href && !href.startsWith('data:') && !collectedUrls.has(href)) {
+          try {
+            const fullUrl = href.startsWith('http')
+              ? href
+              : new URL(href, window.location.origin).href;
+            const response = await fetch(fullUrl);
+            const text = await response.text();
+            css += text + '\n';
+            collectedUrls.add(href);
+          } catch (fetchError) {
+            // Fetch failed - ignore
           }
         }
       }
     } catch (e) {
-      console.warn('Failed to get Tailwind CSS from page', e);
+      console.warn('Failed to get CSS from page', e);
     }
 
-    console.log('Extracted Tailwind CSS length:', css.length);
     return css;
-  }
-
-  private containsTailwindClasses(cssText: string): boolean {
-    if (!cssText || cssText.length < 50) return false;
-
-    // Tailwindクラスのパターンをチェック（より包括的に）
-    const tailwindPatterns = [
-      // ユーティリティクラス
-      /\.(p|m|w|h|text|bg|border|rounded|flex|grid|space|gap|mt|mb|ml|mr|mx|my|pt|pb|pl|pr|px|py|mb|mt|ml|mr|mx|my)-\d+/,
-      // 色クラス
-      /\.(bg|text|border)-(blue|red|green|yellow|gray|slate|zinc|neutral|stone|orange|amber|lime|emerald|teal|cyan|sky|indigo|violet|purple|fuchsia|pink|rose)-\d+/,
-      // テキストサイズ
-      /\.text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl)/,
-      // その他のTailwindユーティリティ
-      /\.(flex|grid|hidden|block|inline|relative|absolute|fixed|sticky)/,
-      /\.(rounded|border|shadow|opacity|transition|transform)/,
-      // Tailwind変数
-      /--tw-/,
-      // Tailwind特有のセレクター構造
-      /\[&>.*\]/,
-    ];
-
-    // 複数のパターンに一致するかチェック
-    let matchCount = 0;
-    for (const pattern of tailwindPatterns) {
-      if (pattern.test(cssText)) {
-        matchCount++;
-        if (matchCount >= 2) return true; // 2つ以上のパターンに一致すればTailwindと判定
-      }
-    }
-
-    return false;
-  }
-
-  private isTailwindRule(cssText: string): boolean {
-    // Tailwind CSSの特徴的なパターンをチェック
-    if (!cssText || cssText.length < 10) return false;
-
-    return (
-      cssText.includes('--tw-border-spacing') ||
-      cssText.includes('--tw-translate') ||
-      cssText.includes('--tw-rotate') ||
-      cssText.includes('--tw-scale') ||
-      cssText.includes('--tw-') || // より広範囲なTailwind変数のチェック
-      cssText.includes('tailwindcss') ||
-      /\.(p|m|w|h|text|bg|border|rounded|flex|grid|space|gap|mt|mb|ml|mr|mx|my|pt|pb|pl|pr|px|py)-\d+/.test(
-        cssText
-      ) ||
-      /\.(text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl))/.test(cssText) ||
-      /\.(bg|text|border)-(blue|red|green|yellow|gray|slate|zinc|neutral|stone|orange|amber|lime|emerald|teal|cyan|sky|indigo|violet|purple|fuchsia|pink|rose)-\d+/.test(
-        cssText
-      ) ||
-      this.containsTailwindClasses(cssText)
-    );
   }
 
   protected exportPurged(): void {
     if (!this.dz) return;
     const inner = this.dz.exportHtml();
     const editorCss = this.editorService.getCss();
-    // For demo: fetch prebuilt tailwind CSS if available; otherwise prompt user to have it
-    // Here we assume you have loaded/generate Tailwind CSS separately.
-    // You can replace this with your own source.
-    const tailwindCss = '';
-    this.codeManager.downloadPurgedTailwindHtml({
-      html: inner,
-      editorCss,
-      tailwindCss,
-      filenameHtml: 'index.html',
-      filenameCss: 'styles.css',
-      title: 'Export',
-    });
+    const domStyles = this.dz.exportStyles();
+
+    // Dùng collectUsedClasses từ @css để thu thập class đang dùng
+    const usedClasses = collectUsedClasses(inner);
+
+    // Lấy Tailwind CSS từ CDN (hoặc có thể truyền vào từ bên ngoài)
+    // TODO: Có thể fetch từ CDN hoặc yêu cầu user cung cấp
+    const tailwindCss = ''; // User cần cung cấp Tailwind CSS ở đây
+
+    if (tailwindCss) {
+      // Dùng purgeTailwindCss từ @css để purge CSS
+      const purgedCss = purgeTailwindCss({
+        tailwindCss,
+        usedClasses,
+      });
+
+      const combinedCss = `${purgedCss}\n${editorCss}\n${domStyles}`;
+
+      this.codeManager.downloadPurgedTailwindHtml({
+        html: inner,
+        editorCss: combinedCss,
+        tailwindCss: '', // Không cần vì đã purge rồi
+        filenameHtml: 'index.html',
+        filenameCss: 'styles.css',
+        title: 'Export Purged',
+      });
+    } else {
+      // Nếu không có Tailwind CSS, chỉ export CSS thường
+      const combinedCss = `${editorCss}\n${domStyles}`;
+      this.codeManager.downloadHtml({
+        html: inner,
+        css: combinedCss,
+        title: 'Export',
+        filename: 'index.html',
+      });
+    }
   }
 
   protected preview(): void {

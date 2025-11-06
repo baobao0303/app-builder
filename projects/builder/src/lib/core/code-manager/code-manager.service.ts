@@ -43,9 +43,10 @@ export class CodeManagerService {
     const html = params.html ?? this.getHtml();
     const css = params.css ?? this.getCss();
     const title = params.title ?? 'Export';
-    return `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${title}</title>\n${
-      css ? `<style>\n${css}\n</style>` : ''
-    }\n</head>\n<body>\n${html}\n</body>\n</html>`;
+    // CSS reset để đảm bảo background trắng
+    const resetCss = `html, body { margin: 0; padding: 0; background-color: #ffffff; color: #000000; }`;
+    const finalCss = css ? `${resetCss}\n${css}` : resetCss;
+    return `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${title}</title>\n<style>\n${finalCss}\n</style>\n</head>\n<body>\n${html}\n</body>\n</html>`;
   }
 
   downloadHtml(
@@ -75,7 +76,9 @@ export class CodeManagerService {
   buildHtmlDocumentLinkingCss(params: { html?: string; title?: string; cssHref: string }): string {
     const html = params.html ?? this.getHtml();
     const title = params.title ?? 'Export';
-    return `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>${title}</title>\n<link rel=\"stylesheet\" href=\"${params.cssHref}\">\n</head>\n<body>\n${html}\n</body>\n</html>`;
+    // CSS reset để đảm bảo background trắng
+    const resetCss = `html, body { margin: 0; padding: 0; background-color: #ffffff; color: #000000; }`;
+    return `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>${title}</title>\n<style>${resetCss}</style>\n<link rel=\"stylesheet\" href=\"${params.cssHref}\">\n</head>\n<body>\n${html}\n</body>\n</html>`;
   }
 
   downloadCss(params: { css?: string; filename?: string } = {}): void {
