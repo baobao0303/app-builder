@@ -386,31 +386,97 @@ export class DynamicZone extends CoreBase {
     return this.nextComponent as Type<any>;
   }
 
-  // Xuất HTML: ưu tiên ComponentModel nếu có, fallback về innerHTML
+  // Xuất HTML: 実際のDOM要素から取得（画像や動的コンテンツを含む）
   exportHtml(): string {
     // 実際のDOM要素からHTMLを取得（画像などの動的コンテンツを含む）
-    const html = this.hostEl?.nativeElement?.innerHTML ?? '';
+    const container = this.hostEl?.nativeElement;
+    if (!container) return '';
 
-    // ComponentModelから構造を取得して、実際のDOM要素とマージ
-    const root = this.componentModelService.getRootComponent();
-    if (root && this.componentDefinitions) {
-      // 実際のDOM要素から画像を取得して、HTMLに含める
-      const container = this.hostEl?.nativeElement;
-      if (container) {
-        const images = container.querySelectorAll('img');
-        images.forEach((img) => {
-          const src = img.getAttribute('src');
-          if (src && !html.includes(src)) {
-            // 画像がHTMLに含まれていない場合は、ComponentModelから生成されたHTMLに追加
-            // ここでは実際のDOM要素のinnerHTMLを使用
-          }
-        });
+    // クローンを作成して、編集可能な要素をクリーンアップ
+    const clone = container.cloneNode(true) as HTMLElement;
+
+    // Angular固有の属性やクラスを削除
+    const angularAttributes = ['_ngcontent', 'ng-version', 'ng-reflect'];
+    const angularClasses = [
+      'dz-item',
+      'dz-selected',
+      'dz-row',
+      'dz-column',
+      'dz-image',
+      'dz-list',
+      'dz-card',
+    ];
+
+    const cleanElement = (el: HTMLElement) => {
+      // 属性をクリーンアップ
+      Array.from(el.attributes).forEach((attr) => {
+        if (angularAttributes.some((a) => attr.name.startsWith(a))) {
+          el.removeAttribute(attr.name);
+        }
+      });
+
+      // クラスをクリーンアップ
+      if (el.className) {
+        const classes = el.className.split(' ').filter((c) => !angularClasses.includes(c));
+        if (classes.length > 0) {
+          el.className = classes.join(' ');
+        } else {
+          el.removeAttribute('class');
+        }
       }
-      // 実際のDOM要素のinnerHTMLを使用（画像などの動的コンテンツを含む）
-      return html || root.toHTML();
+
+      // 子要素も再帰的にクリーンアップ
+      Array.from(el.children).forEach((child) => {
+        cleanElement(child as HTMLElement);
+      });
+    };
+
+    cleanElement(clone);
+
+    return clone.innerHTML;
+  }
+
+  // 実際のDOM要素からスタイルを取得
+  exportStyles(): string {
+    const container = this.hostEl?.nativeElement;
+    if (!container) return '';
+
+    const styles: string[] = [];
+    const processed = new Set<HTMLElement>();
+
+    const collectStyles = (el: HTMLElement) => {
+      if (processed.has(el)) return;
+      processed.add(el);
+
+      // インラインスタイルを取得
+      const inlineStyle = el.getAttribute('style');
+      if (inlineStyle) {
+        const selector = this.getElementSelector(el);
+        if (selector) {
+          styles.push(`${selector} { ${inlineStyle} }`);
+        }
+      }
+
+      // 子要素も再帰的に処理
+      Array.from(el.children).forEach((child) => {
+        collectStyles(child as HTMLElement);
+      });
+    };
+
+    collectStyles(container);
+    return styles.join('\n');
+  }
+
+  private getElementSelector(el: HTMLElement): string {
+    const id = el.id;
+    if (id) return `#${id}`;
+
+    const classes = Array.from(el.classList).filter((c) => !c.startsWith('dz-'));
+    if (classes.length > 0) {
+      return `.${classes[0]}`;
     }
-    // Fallback: dùng innerHTML
-    return html;
+
+    return el.tagName.toLowerCase();
   }
 
   // ========== Drag reorder support within zone ===========

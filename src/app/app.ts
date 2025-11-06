@@ -33,6 +33,8 @@ import { NavbarComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs
 import { ImageComponent } from '../../projects/builder/src/lib/widgets/components/image/image.component';
 import { ListComponent } from '../../projects/builder/src/lib/widgets/components/list/list.component';
 import { CardComponent } from '../../projects/builder/src/lib/widgets/components/card/card.component';
+import { collectUsedClasses } from '../../projects/builder/src/lib/core/css/collect-used-classes';
+import { purgeTailwindCss } from '../../projects/builder/src/lib/core/css/purge-tailwind';
 
 const defaultCoreContext: CoreAggregationContext = {
   getContextType(): ContextType {
@@ -436,7 +438,14 @@ export class App {
 
     const inner = this.dz.exportHtml();
     const css = this.editorService.getCss();
-    this.codeManager.downloadHtml({ html: inner, css, title: 'Export', filename: 'zone.html' });
+    const domStyles = this.dz.exportStyles();
+    const combinedCss = `${css}\n${domStyles}`;
+    this.codeManager.downloadHtml({
+      html: inner,
+      css: combinedCss,
+      title: 'Export',
+      filename: 'zone.html',
+    });
   }
 
   protected exportCss(): void {
@@ -444,9 +453,11 @@ export class App {
 
     const inner = this.dz.exportHtml();
     const css = this.editorService.getCss();
+    const domStyles = this.dz.exportStyles();
+    const combinedCss = `${css}\n${domStyles}`;
 
     // 1) Download external CSS
-    this.codeManager.downloadCss({ css, filename: 'styles.css' });
+    this.codeManager.downloadCss({ css: combinedCss, filename: 'styles.css' });
 
     // 2) Download HTML linking to that CSS
     const htmlDoc = this.codeManager.buildHtmlDocumentLinkingCss({
@@ -463,16 +474,34 @@ export class App {
     URL.revokeObjectURL(url);
   }
 
-  protected exportWithTailwind(): void {
+  protected async exportWithTailwind(): Promise<void> {
     if (!this.dz) return;
     const inner = this.dz.exportHtml();
-    // Build HTML without inline CSS and inject Tailwind CDN
-    let doc = this.codeManager.buildHtmlDocument({
+
+    // collectUsedClassesを使って使用されているクラスを収集
+    const usedClasses = collectUsedClasses(inner);
+
+    // 現在のページでTailwind CDNがロードされている場合、そのCSSを取得
+    const tailwindCss = await this.getTailwindCssFromPage();
+
+    // 使用されているクラスだけをパージ
+    const purgedCss = tailwindCss
+      ? purgeTailwindCss({
+          tailwindCss,
+          usedClasses,
+        })
+      : '';
+
+    const domStyles = this.dz.exportStyles();
+    const combinedCss = `${purgedCss}\n${domStyles}`;
+
+    // Build HTML with inline CSS (no CDN)
+    const doc = this.codeManager.buildHtmlDocument({
       html: inner,
-      css: '',
+      css: combinedCss,
       title: 'Export Tailwind',
     });
-    // doc = doc.replace('</head>', '<script src="https://cdn.tailwindcss.com"></script></head>');
+
     const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -480,6 +509,117 @@ export class App {
     a.download = 'index.html';
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  private async getTailwindCssFromPage(): Promise<string> {
+    // 現在のページでTailwind CSSがロードされている場合、そのスタイルシートからCSSを取得
+    let css = '';
+    try {
+      // まず、すべてのスタイルシートをチェック
+      const styleSheets = Array.from(document.styleSheets);
+      for (const sheet of styleSheets) {
+        try {
+          let isTailwindSheet = false;
+
+          // Tailwind CDNのスタイルシートをチェック
+          if (sheet.href && sheet.href.includes('tailwindcss.com')) {
+            isTailwindSheet = true;
+          }
+
+          // インラインスタイルシートの場合、Tailwindパターンをチェック
+          if (!sheet.href) {
+            const rules = Array.from(sheet.cssRules || []);
+            // 最初の数個のルールをチェックしてTailwindかどうか判定
+            for (let i = 0; i < Math.min(10, rules.length); i++) {
+              if (rules[i].cssText && this.isTailwindRule(rules[i].cssText)) {
+                isTailwindSheet = true;
+                break;
+              }
+            }
+          }
+
+          if (isTailwindSheet) {
+            const rules = Array.from(sheet.cssRules || []);
+            rules.forEach((rule) => {
+              if (rule.cssText) {
+                css += rule.cssText + '\n';
+              }
+            });
+          }
+        } catch (e) {
+          // Cross-origin stylesheetのエラーを無視して、fetchで取得を試みる
+          if (sheet.href && !sheet.href.startsWith('data:')) {
+            try {
+              const response = await fetch(sheet.href);
+              const text = await response.text();
+              if (this.isTailwindRule(text)) {
+                css += text + '\n';
+              }
+            } catch (fetchError) {
+              // fetchも失敗した場合は無視
+            }
+          }
+        }
+      }
+
+      // スタイルシートから取得できない場合、<style>タグから直接取得
+      if (!css) {
+        const styleTags = document.querySelectorAll('style');
+        styleTags.forEach((tag) => {
+          const styleText = tag.textContent || tag.innerHTML;
+          if (styleText && this.isTailwindRule(styleText)) {
+            css += styleText + '\n';
+          }
+        });
+      }
+
+      // まだ取得できていない場合、<link>タグからCSSファイルを取得
+      if (!css) {
+        const linkTags = document.querySelectorAll('link[rel="stylesheet"]');
+        for (const link of Array.from(linkTags)) {
+          const href = link.getAttribute('href');
+          if (href && !href.startsWith('data:')) {
+            try {
+              const fullUrl = href.startsWith('http')
+                ? href
+                : new URL(href, window.location.origin).href;
+              const response = await fetch(fullUrl);
+              const text = await response.text();
+              if (this.isTailwindRule(text)) {
+                css += text + '\n';
+              }
+            } catch (fetchError) {
+              // fetch失敗は無視
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to get Tailwind CSS from page', e);
+    }
+
+    console.log('Extracted Tailwind CSS length:', css.length);
+    return css;
+  }
+
+  private isTailwindRule(cssText: string): boolean {
+    // Tailwind CSSの特徴的なパターンをチェック
+    if (!cssText || cssText.length < 10) return false;
+
+    return (
+      cssText.includes('--tw-border-spacing') ||
+      cssText.includes('--tw-translate') ||
+      cssText.includes('--tw-rotate') ||
+      cssText.includes('--tw-scale') ||
+      cssText.includes('tailwindcss') ||
+      /\.(p|m|w|h|text|bg|border|rounded|flex|grid|space|gap|mt|mb|ml|mr|mx|my|pt|pb|pl|pr|px|py)-\d+/.test(
+        cssText
+      ) ||
+      /\.(text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl))/.test(cssText) ||
+      /\.(bg-(blue|red|green|yellow|gray|slate|zinc|neutral|stone|orange|amber|lime|emerald|teal|cyan|sky|indigo|violet|purple|fuchsia|pink|rose)-\d+)/.test(
+        cssText
+      )
+    );
   }
 
   protected exportPurged(): void {
@@ -504,9 +644,11 @@ export class App {
     if (!this.dz) return;
     const inner = this.dz.exportHtml();
     const css = this.editorService.getCss();
+    const domStyles = this.dz.exportStyles();
+    const combinedCss = `${css}\n${domStyles}`;
     const htmlDoc = this.codeManager.buildHtmlDocument({
       html: inner,
-      css,
+      css: combinedCss,
       title: 'Preview',
     });
     // Open in new window

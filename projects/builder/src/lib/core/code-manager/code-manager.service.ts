@@ -59,10 +59,10 @@ export class CodeManagerService {
   ): void {
     console.log('downloadHtml', params);
     let doc = this.buildHtmlDocument(params);
-    if (params.tailwindCdnUrl) {
-      const tag = `<script src="${params.tailwindCdnUrl}"></script>`;
-      doc = doc.replace('</head>', `${tag}</head>`);
-    }
+    // if (params.tailwindCdnUrl) {
+    //   const tag = `<script src="${params.tailwindCdnUrl}"></script>`;
+    //   doc = doc.replace('</head>', `${tag}</head>`);
+    // }
     const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
