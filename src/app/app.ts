@@ -472,7 +472,7 @@ export class App {
       css: '',
       title: 'Export Tailwind',
     });
-    doc = doc.replace('</head>', '<script src="https://cdn.tailwindcss.com"></script></head>');
+    // doc = doc.replace('</head>', '<script src="https://cdn.tailwindcss.com"></script></head>');
     const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
