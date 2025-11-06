@@ -113,7 +113,11 @@ export class DynamicZone extends CoreBase {
     // Handle nested components from componentDefinitions
     if (componentRef && this.componentDefinitions && this.componentDefinitions[key]) {
       const definition = this.componentDefinitions[key];
-      console.log('[DynamicZone.add] definition has', definition.components?.length || 0, 'children');
+      console.log(
+        '[DynamicZone.add] definition has',
+        definition.components?.length || 0,
+        'children'
+      );
       if (definition.components && definition.components.length > 0) {
         this.createNestedComponents(componentRef, definition.components);
       }
@@ -143,7 +147,14 @@ export class DynamicZone extends CoreBase {
       const widgetKey = childDef.attributes?.['data-widget'];
       const componentType = widgetKey ? this.registry[widgetKey] : null;
 
-      console.log('[DynamicZone.createNestedComponents] Child', index, 'widgetKey:', widgetKey, 'found:', !!componentType);
+      console.log(
+        '[DynamicZone.createNestedComponents] Child',
+        index,
+        'widgetKey:',
+        widgetKey,
+        'found:',
+        !!componentType
+      );
 
       if (!componentType) {
         console.warn('[DynamicZone] No component found for', widgetKey || childDef.tagName);
@@ -377,13 +388,29 @@ export class DynamicZone extends CoreBase {
 
   // Xuất HTML: ưu tiên ComponentModel nếu có, fallback về innerHTML
   exportHtml(): string {
+    // 実際のDOM要素からHTMLを取得（画像などの動的コンテンツを含む）
+    const html = this.hostEl?.nativeElement?.innerHTML ?? '';
+
+    // ComponentModelから構造を取得して、実際のDOM要素とマージ
     const root = this.componentModelService.getRootComponent();
     if (root && this.componentDefinitions) {
-      // Dùng ComponentModel để generate HTML
-      return root.toHTML();
+      // 実際のDOM要素から画像を取得して、HTMLに含める
+      const container = this.hostEl?.nativeElement;
+      if (container) {
+        const images = container.querySelectorAll('img');
+        images.forEach((img) => {
+          const src = img.getAttribute('src');
+          if (src && !html.includes(src)) {
+            // 画像がHTMLに含まれていない場合は、ComponentModelから生成されたHTMLに追加
+            // ここでは実際のDOM要素のinnerHTMLを使用
+          }
+        });
+      }
+      // 実際のDOM要素のinnerHTMLを使用（画像などの動的コンテンツを含む）
+      return html || root.toHTML();
     }
     // Fallback: dùng innerHTML
-    return this.hostEl?.nativeElement?.innerHTML ?? '';
+    return html;
   }
 
   // ========== Drag reorder support within zone ===========

@@ -32,6 +32,7 @@ import { ColumnComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs
 import { NavbarComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs/components/extras/navbar/navbar.component';
 import { ImageComponent } from '../../projects/builder/src/lib/widgets/components/image/image.component';
 import { ListComponent } from '../../projects/builder/src/lib/widgets/components/list/list.component';
+import { CardComponent } from '../../projects/builder/src/lib/widgets/components/card/card.component';
 
 const defaultCoreContext: CoreAggregationContext = {
   getContextType(): ContextType {
@@ -88,6 +89,7 @@ export class App {
     '2-columns-3-7': RowComponent,
     image: ImageComponent,
     list: ListComponent,
+    card: CardComponent,
   };
 
   // Component definitions để generate HTML từ model
@@ -170,30 +172,6 @@ export class App {
                     'hover:bg-gray-200',
                   ],
                   content: 'Brand link',
-                },
-              ],
-            },
-            {
-              tagName: 'nav',
-              classes: ['flex', 'space-x-4'],
-              components: [
-                {
-                  tagName: 'a',
-                  attributes: { href: '#' },
-                  classes: ['text-gray-800', 'hover:text-blue-600'],
-                  content: 'Home',
-                },
-                {
-                  tagName: 'a',
-                  attributes: { href: '#' },
-                  classes: ['text-gray-800', 'hover:text-blue-600'],
-                  content: 'About',
-                },
-                {
-                  tagName: 'a',
-                  attributes: { href: '#' },
-                  classes: ['text-gray-800', 'hover:text-blue-600'],
-                  content: 'Contact',
                 },
               ],
             },
@@ -370,6 +348,12 @@ export class App {
         },
       ],
     },
+    card: {
+      tagName: 'div',
+      attributes: { 'data-widget': 'card' },
+      classes: ['card-widget'],
+      components: [],
+    },
   };
 
   // UI State
@@ -514,6 +498,23 @@ export class App {
       filenameCss: 'styles.css',
       title: 'Export',
     });
+  }
+
+  protected preview(): void {
+    if (!this.dz) return;
+    const inner = this.dz.exportHtml();
+    const css = this.editorService.getCss();
+    const htmlDoc = this.codeManager.buildHtmlDocument({
+      html: inner,
+      css,
+      title: 'Preview',
+    });
+    // Open in new window
+    const newWindow = window.open('', '_blank');
+    if (newWindow) {
+      newWindow.document.write(htmlDoc);
+      newWindow.document.close();
+    }
   }
 
   protected async saveProject(): Promise<void> {
