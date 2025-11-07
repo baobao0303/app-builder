@@ -36,6 +36,7 @@ export class ToolBox {
       { key: '3-columns', label: '3 columns' },
       { key: '2-columns-3-7', label: '2 columns 3/7' },
       { key: 'image', label: 'Image' },
+      { key: 'video', label: 'Video' },
       { key: 'list', label: 'List' },
       { key: 'card', label: 'Card' },
       { key: 'voucher', label: 'Voucher Card' },

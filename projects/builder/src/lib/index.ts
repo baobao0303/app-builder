@@ -18,6 +18,7 @@ export * from './core/keymaps/keymap.service';
 export * from './core/plugin-manager/plugin.service';
 export * from './core/code-manager/code-manager.service';
 export * from './core/utils';
+export * from './core/context/builder-context';
 export * from './widgets/dynamic-zone/dynamic-zone';
 export * from './widgets/ToolBoxs/tool-box/tool-box';
 export * from './widgets/components/canvas-widget/canvas-widget';

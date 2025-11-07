@@ -5,7 +5,7 @@ import { Component, ElementRef, ViewChild, ViewContainerRef } from '@angular/cor
   standalone: true,
   template: `
     <div class="column dz-column" #host>
-      <div class="column-inner" #child></div>
+      <ng-container #child></ng-container>
       <div class="column-label">Column</div>
     </div>
   `,
@@ -37,15 +37,6 @@ import { Component, ElementRef, ViewChild, ViewContainerRef } from '@angular/cor
         font-weight: 500;
         pointer-events: none;
         z-index: 1;
-      }
-      .column-inner {
-        // min-height: 60px;
-        // padding: 8px;
-        width: 100%;
-        box-sizing: border-box;
-      }
-      .column-inner:not(:empty) ~ .column-label {
-        display: none;
       }
     `,
   ],

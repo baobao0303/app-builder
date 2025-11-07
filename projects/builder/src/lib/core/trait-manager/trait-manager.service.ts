@@ -267,23 +267,11 @@ export class TraitManagerService {
             console.log('[TraitManager] Changed class from column.dz-column to row.dz-row');
           }
 
-          // Also toggle inner element class
-          const inner = container.querySelector('.row-inner, .column-inner') as HTMLElement | null;
-          if (inner) {
-            if (isColumn) {
-              inner.classList.remove('row-inner');
-              inner.classList.add('column-inner');
-            } else if (isRow) {
-              inner.classList.remove('column-inner');
-              inner.classList.add('row-inner');
-            }
-          }
-
-          // Apply flex-direction style to inner element
-          if (inner) {
-            inner.style.setProperty('flex-direction', String(direction || 'row'), 'important');
-            inner.offsetHeight; // Force reflow
-          }
+          // Apply flex-direction and gap directly to container (.column.dz-column or .row.dz-row)
+          container.style.setProperty('display', 'flex', 'important');
+          container.style.setProperty('flex-direction', String(direction || 'row'), 'important');
+          container.style.setProperty('gap', '16px', 'important');
+          container.offsetHeight; // Force reflow
         };
 
         // Priority 1: If target is app-row, find container div inside it

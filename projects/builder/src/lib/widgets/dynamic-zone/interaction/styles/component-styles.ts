@@ -31,8 +31,8 @@ export const COMPONENT_STYLES: Record<string, string> = {
     `,
   '.row': `
       display: flex;
-      gap: 0;
-      padding: 0;
+      gap: 16px;
+      padding: 8px;
       min-height: 60px;
       border: none;
       background: transparent;
@@ -41,7 +41,7 @@ export const COMPONENT_STYLES: Record<string, string> = {
     `,
   '.row-inner': `
       display: flex;
-      gap: 0;
+      gap: 16px;
       width: 100%;
       min-height: 44px;
       flex: 1;

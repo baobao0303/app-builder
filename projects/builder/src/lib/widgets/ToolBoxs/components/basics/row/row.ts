@@ -5,7 +5,7 @@ import { Component, ElementRef, ViewChild, ViewContainerRef } from '@angular/cor
   standalone: true,
   template: `
     <div class="row dz-row" #host>
-      <div class="row-inner" #child></div>
+      <ng-container #child></ng-container>
     </div>
   `,
   styles: [
@@ -16,20 +16,12 @@ import { Component, ElementRef, ViewChild, ViewContainerRef } from '@angular/cor
       }
       .row {
         display: flex;
-        gap: 8px;
-        padding: 8px;
+        gap: 16px;
         min-height: 60px;
         border: 1px dashed #cbd5e1;
         background: #f8fafc;
         width: 100%;
         box-sizing: border-box;
-      }
-      .row-inner {
-        display: flex;
-        gap: 8px;
-        width: 100%;
-        min-height: 44px;
-        flex: 1;
       }
     `,
   ],

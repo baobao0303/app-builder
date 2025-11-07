@@ -87,7 +87,6 @@ export function logDOMPosition(
       'Component Model': modelInfo || '(none)',
     };
     // eslint-disable-next-line no-console
-    console.group('🔍 [DZ - DOM Position] Selected Element');
     console.table(positionInfo);
     console.log('Full Element:', element);
     console.log('Full Bounding Rect:', rect);

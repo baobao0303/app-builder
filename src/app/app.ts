@@ -1,13 +1,9 @@
-import { ImageComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs/components/basics/image/image.component';
 import { Component, Type, ViewChild, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import {
   DynamicZone,
   ToolBox,
   CORE_CONTEXT,
-  type ContextType,
-  type CoreAggregationContext,
-  CanvasZone,
   EditorService,
   ComponentModelService,
   ComponentDefinition,
@@ -20,45 +16,17 @@ import {
   AssetsPanelComponent,
   ModalHostComponent,
   DropIndicatorComponent,
-  AComponent,
-  SectionComponent,
   BlockModel,
   CommandManagerService,
   KeymapService,
   CodeManagerService,
   ComponentModel,
+  BuilderContextService,
+  BUILDER_CONTEXT,
 } from 'builder';
 import { TraitManagerPanelComponent } from '../../projects/builder/src/lib/core/trait-manager/trait-manager.panel';
-import { Banner } from '../../projects/builder/src/lib/widgets/components/banner/banner';
-import { RowComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs/components/basics/row/row';
-import { ColumnComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs/components/basics/column/column';
-import { NavbarComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs/components/extras/navbar/navbar.component';
-import { ListComponent } from '../../projects/builder/src/lib/widgets/components/list/list.component';
-import { CardComponent } from '../../projects/builder/src/lib/widgets/components/card/card.component';
 import { collectUsedClasses } from '../../projects/builder/src/lib/core/css/collect-used-classes';
 import { purgeTailwindCss } from '../../projects/builder/src/lib/core/css/purge-tailwind';
-import { HeadingComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs/components/basics/heading/heading';
-import { TextComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs/components/basics/text/text';
-import { VoucherComponent } from '../../projects/builder/src/lib/widgets/components/voucher/voucher.component';
-import { VoucherCarouselComponent } from '../../projects/builder/src/lib/widgets/components/voucher/voucher-carousel.component';
-
-const defaultCoreContext: CoreAggregationContext = {
-  getContextType(): ContextType {
-    return 'page';
-  },
-  getAllowedChildren(): ContextType[] {
-    return ['section'];
-  },
-  canAddItem(childType: ContextType): boolean {
-    return this.getAllowedChildren().includes(childType);
-  },
-  canRemoveItem(_index: number): boolean {
-    return true;
-  },
-  canMoveItem(_from: number, _to: number): boolean {
-    return true;
-  },
-};
 
 @Component({
   selector: 'app-root',
@@ -66,7 +34,6 @@ const defaultCoreContext: CoreAggregationContext = {
     RouterOutlet,
     DynamicZone,
     ToolBox,
-    CanvasZone,
     NavigatorPanelComponent,
     BlockManagerPanelComponent,
     AssetsPanelComponent,
@@ -76,7 +43,6 @@ const defaultCoreContext: CoreAggregationContext = {
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
-  providers: [{ provide: CORE_CONTEXT, useValue: defaultCoreContext }],
 })
 export class App {
   protected readonly title = signal('Page Builder');
@@ -84,553 +50,9 @@ export class App {
   @ViewChild('dz', { static: false })
   private dz?: DynamicZone;
 
-  protected registry: Record<string, Type<unknown>> = {
-    banner: Banner,
-    canvas: CanvasZone,
-    a: AComponent,
-    section: SectionComponent,
-    navbar: NavbarComponent,
-    row: RowComponent,
-    column: ColumnComponent,
-    '1-columns': RowComponent,
-    '2-columns': RowComponent,
-    '3-columns': RowComponent,
-    '2-columns-3-7': RowComponent,
-    image: ImageComponent,
-    list: ListComponent,
-    card: CardComponent,
-    heading: HeadingComponent,
-    text: TextComponent,
-    voucher: VoucherComponent,
-    'voucher-carousel': VoucherCarouselComponent,
-  };
+  protected registry!: Record<string, Type<unknown>>;
 
-  // Component definitions để generate HTML từ model
-  protected componentDefinitions: Record<string, ComponentDefinition> = {
-    banner: {
-      tagName: 'div',
-      attributes: { 'data-widget': 'banner' },
-      style: { padding: '10px', border: '1px solid #ccc', background: '#f0f0f0' },
-      classes: ['banner-widget'],
-      content: 'Banner Component',
-    },
-    canvas: {
-      tagName: 'div',
-      attributes: { 'data-widget': 'canvas' },
-      style: { width: '100%', height: '300px', border: '1px solid #ddd', background: '#fafafa' },
-      classes: ['canvas-widget'],
-      content: 'Canvas Component',
-    },
-    section: {
-      tagName: 'section',
-      classes: ['p-4', 'bg-slate-50', 'border', 'border-slate-300', 'rounded'],
-      components: [],
-    },
-    a: {
-      tagName: 'div',
-      classes: ['p-4', 'bg-blue-50', 'rounded', 'border', 'border-blue-200'],
-      components: [
-        {
-          tagName: 'h1',
-          classes: ['text-2xl', 'font-bold', 'text-blue-700'],
-          content: 'Tailwind A Component',
-        },
-        {
-          tagName: 'p',
-          classes: ['mt-2', 'text-sm', 'text-blue-600'],
-          content: 'This is rendered with Tailwind utilities.',
-        },
-        {
-          tagName: 'button',
-          classes: [
-            'mt-3',
-            'px-3',
-            'py-1',
-            'bg-blue-500',
-            'text-white',
-            'rounded',
-            'hover:bg-blue-600',
-          ],
-          content: 'Action',
-        },
-      ],
-    },
-    navbar: {
-      tagName: 'div',
-      classes: ['bg-white', 'shadow-sm'],
-      components: [
-        {
-          tagName: 'div',
-          classes: [
-            'flex',
-            'items-center',
-            'justify-between',
-            'p-4',
-            'border-b',
-            'border-gray-200',
-          ],
-          components: [
-            {
-              tagName: 'div',
-              classes: ['flex', 'items-center'],
-              components: [
-                {
-                  tagName: 'button',
-                  classes: [
-                    'px-4',
-                    'py-2',
-                    'bg-gray-100',
-                    'text-gray-700',
-                    'rounded-md',
-                    'hover:bg-gray-200',
-                  ],
-                  content: 'Brand link',
-                },
-              ],
-            },
-          ],
-        },
-        {
-          tagName: 'div',
-          classes: ['flex', 'justify-center', 'p-3'],
-          components: [
-            {
-              tagName: 'nav',
-              classes: ['flex', 'space-x-6'],
-              components: [
-                {
-                  tagName: 'a',
-                  attributes: { href: '#' },
-                  classes: ['text-gray-700', 'hover:text-blue-600'],
-                  content: 'Product',
-                },
-                {
-                  tagName: 'a',
-                  attributes: { href: '#' },
-                  classes: ['text-gray-700', 'hover:text-blue-600'],
-                  content: 'Features',
-                },
-                {
-                  tagName: 'a',
-                  attributes: { href: '#' },
-                  classes: ['text-gray-700', 'hover:text-blue-600'],
-                  content: 'Reviews',
-                },
-                {
-                  tagName: 'a',
-                  attributes: { href: '#' },
-                  classes: ['text-gray-700', 'hover:text-blue-600'],
-                  content: 'Pricing',
-                },
-                {
-                  tagName: 'a',
-                  attributes: { href: '#' },
-                  classes: ['text-gray-700', 'hover:text-blue-600'],
-                  content: 'FAQ',
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-    '1-columns': {
-      tagName: 'div',
-      attributes: { 'data-widget': 'row' },
-      classes: ['row'],
-      components: [
-        {
-          tagName: 'div',
-          attributes: { 'data-widget': 'column' },
-          classes: ['column'],
-          components: [],
-        },
-      ],
-    },
-    '2-columns': {
-      tagName: 'div',
-      attributes: { 'data-widget': 'row' },
-      classes: ['row'],
-      components: [
-        {
-          tagName: 'div',
-          attributes: { 'data-widget': 'column' },
-          classes: ['column'],
-          components: [],
-        },
-        {
-          tagName: 'div',
-          attributes: { 'data-widget': 'column' },
-          classes: ['column'],
-          components: [],
-        },
-      ],
-    },
-    '3-columns': {
-      tagName: 'div',
-      attributes: { 'data-widget': 'row' },
-      classes: ['row'],
-      components: [
-        {
-          tagName: 'div',
-          attributes: { 'data-widget': 'column' },
-          classes: ['column'],
-          components: [],
-        },
-        {
-          tagName: 'div',
-          attributes: { 'data-widget': 'column' },
-          classes: ['column'],
-          components: [],
-        },
-        {
-          tagName: 'div',
-          attributes: { 'data-widget': 'column' },
-          classes: ['column'],
-          components: [],
-        },
-      ],
-    },
-    '2-columns-3-7': {
-      tagName: 'div',
-      attributes: { 'data-widget': 'row' },
-      classes: ['row'],
-      components: [
-        {
-          tagName: 'div',
-          attributes: { 'data-widget': 'column' },
-          classes: ['column'],
-          style: { width: '30%' },
-          components: [],
-        },
-        {
-          tagName: 'div',
-          attributes: { 'data-widget': 'column' },
-          classes: ['column'],
-          style: { width: '70%' },
-          components: [],
-        },
-      ],
-    },
-    image: {
-      tagName: 'div',
-      attributes: { 'data-widget': 'image' },
-      classes: ['image-widget'],
-      components: [],
-    },
-    list: {
-      tagName: 'ul',
-      attributes: { 'data-widget': 'list' },
-      classes: ['list', 'space-y-2', 'list-none', 'p-0', 'm-0'],
-      components: [
-        {
-          tagName: 'li',
-          classes: [
-            'p-3',
-            'bg-white',
-            'border',
-            'border-gray-200',
-            'rounded-md',
-            'hover:bg-gray-50',
-          ],
-          content: 'List item 1',
-        },
-        {
-          tagName: 'li',
-          classes: [
-            'p-3',
-            'bg-white',
-            'border',
-            'border-gray-200',
-            'rounded-md',
-            'hover:bg-gray-50',
-          ],
-          content: 'List item 2',
-        },
-        {
-          tagName: 'li',
-          classes: [
-            'p-3',
-            'bg-white',
-            'border',
-            'border-gray-200',
-            'rounded-md',
-            'hover:bg-gray-50',
-          ],
-          content: 'List item 3',
-        },
-      ],
-    },
-    card: {
-      tagName: 'div',
-      attributes: { 'data-widget': 'card' },
-      classes: ['card-widget'],
-      components: [],
-    },
-    'voucher-carousel': {
-      tagName: 'div',
-      attributes: { 'data-widget': 'voucher-carousel' },
-      style: { width: '100%' },
-      components: [
-        {
-          tagName: 'div',
-          style: { display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' },
-          components: [
-            {
-              tagName: 'button',
-              style: {
-                border: '1px solid #e5e7eb',
-                background: '#fff',
-                borderRadius: '6px',
-                padding: '6px 10px',
-              },
-              content: 'Ẩn điều khiển',
-            },
-          ],
-        },
-        {
-          tagName: 'div',
-          style: { position: 'relative', overflow: 'hidden' },
-          components: [
-            {
-              tagName: 'div',
-              style: { display: 'flex', gap: '12px' },
-              components: [
-                {
-                  tagName: 'div',
-                  style: { flex: '0 0 auto', width: '340px' },
-                  components: [{ tagName: 'app-voucher' }],
-                },
-                {
-                  tagName: 'div',
-                  style: { flex: '0 0 auto', width: '340px' },
-                  components: [{ tagName: 'app-voucher', attributes: { title: 'Giảm 10%' } }],
-                },
-                {
-                  tagName: 'div',
-                  style: { flex: '0 0 auto', width: '340px' },
-                  components: [{ tagName: 'app-voucher', attributes: { title: 'Giảm 30K' } }],
-                },
-                {
-                  tagName: 'div',
-                  style: { flex: '0 0 auto', width: '340px' },
-                  components: [{ tagName: 'app-voucher', attributes: { title: '50K' } }],
-                },
-              ],
-            },
-            {
-              tagName: 'button',
-              style: {
-                position: 'absolute',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                left: '8px',
-                background: '#111827',
-                color: '#fff',
-                borderRadius: '999px',
-                width: '28px',
-                height: '28px',
-                border: 'none',
-              },
-              content: '‹',
-            },
-            {
-              tagName: 'button',
-              style: {
-                position: 'absolute',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                right: '8px',
-                background: '#111827',
-                color: '#fff',
-                borderRadius: '999px',
-                width: '28px',
-                height: '28px',
-                border: 'none',
-              },
-              content: '›',
-            },
-          ],
-        },
-        {
-          tagName: 'div',
-          style: { display: 'flex', justifyContent: 'center', gap: '8px', padding: '8px 0' },
-          components: [
-            {
-              tagName: 'span',
-              style: {
-                width: '8px',
-                height: '8px',
-                background: '#6b7280',
-                borderRadius: '999px',
-                display: 'inline-block',
-              },
-            },
-            {
-              tagName: 'span',
-              style: {
-                width: '8px',
-                height: '8px',
-                background: '#d1d5db',
-                borderRadius: '999px',
-                display: 'inline-block',
-              },
-            },
-            {
-              tagName: 'span',
-              style: {
-                width: '8px',
-                height: '8px',
-                background: '#d1d5db',
-                borderRadius: '999px',
-                display: 'inline-block',
-              },
-            },
-          ],
-        },
-      ],
-    },
-    voucher: {
-      tagName: 'div',
-      attributes: { 'data-widget': 'voucher' },
-      style: {
-        display: 'flex',
-        border: '1px solid #e5e7eb',
-        borderRadius: '8px',
-        overflow: 'hidden',
-        background: '#fff',
-        alignItems: 'stretch',
-      },
-      components: [
-        {
-          tagName: 'div',
-          style: { width: '110px', background: '#fafafa', position: 'relative' },
-          components: [
-            {
-              tagName: 'div',
-              style: {
-                position: 'absolute',
-                top: '0',
-                left: '0',
-                background: '#ff6b00',
-                color: '#fff',
-                padding: '4px 8px',
-                fontSize: '12px',
-                borderBottomRightRadius: '6px',
-                fontWeight: '600',
-              },
-              content: 'Chỉ Online',
-            },
-            {
-              tagName: 'div',
-              style: {
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                gap: '8px',
-                paddingTop: '22px',
-                paddingBottom: '10px',
-              },
-              components: [
-                {
-                  tagName: 'div',
-                  style: {
-                    width: '48px',
-                    height: '48px',
-                    borderRadius: '24px',
-                    background: '#f3f4f6',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: '1px solid #e5e7eb',
-                  },
-                  content: '<span style="font-size:10px;color:#9ca3af">logo</span>',
-                },
-                {
-                  tagName: 'div',
-                  style: {
-                    fontSize: '12px',
-                    color: '#6b7280',
-                    textAlign: 'center',
-                    padding: '0 8px',
-                  },
-                  content: 'Trừ sữa dưới 2T',
-                },
-              ],
-            },
-          ],
-        },
-        {
-          tagName: 'div',
-          style: { flex: '1', padding: '12px 12px 12px 16px', position: 'relative' },
-          components: [
-            {
-              tagName: 'div',
-              style: {
-                position: 'absolute',
-                right: '8px',
-                top: '8px',
-                background: '#ec4899',
-                color: '#fff',
-                borderRadius: '12px',
-                padding: '0 6px',
-                fontSize: '12px',
-                fontWeight: '700',
-              },
-              content: 'x1',
-            },
-            { tagName: 'div', style: { color: '#ec4899', fontWeight: '700' }, content: 'Giảm 12%' },
-            {
-              tagName: 'div',
-              style: { color: '#374151', marginTop: '2px', fontSize: '13px' },
-              content: 'tối đa 150.000đ đơn từ 699.000đ',
-            },
-            {
-              tagName: 'div',
-              style: {
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginTop: '12px',
-              },
-              components: [
-                {
-                  tagName: 'div',
-                  style: { fontSize: '12px', color: '#6b7280' },
-                  content: '<div>Thời hạn:</div><div>31/10 - 30/11</div>',
-                },
-                {
-                  tagName: 'button',
-                  style: {
-                    background: '#ec4899',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '8px 18px',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                  },
-                  content: 'Lưu',
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-    heading: {
-      tagName: 'h1',
-      classes: ['text-2xl', 'font-bold', 'text-gray-900'],
-      content: 'Heading text',
-    },
-    text: {
-      tagName: 'p',
-      classes: ['text-sm', 'text-gray-700'],
-      content: 'Paragraph text',
-    },
-  };
+  protected componentDefinitions!: Record<string, ComponentDefinition>;
 
   // UI State
   protected activePanel: 'blocks' | 'navigator' | 'assets' | 'properties' = 'blocks';
@@ -665,8 +87,13 @@ export class App {
     private undoManager: UndoManagerService,
     private commandManager: CommandManagerService,
     private keymaps: KeymapService,
-    private codeManager: CodeManagerService
+    private codeManager: CodeManagerService,
+    private builderContext: BuilderContextService
   ) {
+    this.registry = this.builderContext.registry;
+    this.componentDefinitions = this.builderContext.componentDefinitions;
+    this.blocks = this.builderContext.defaultBlocks.map((block) => new BlockModel(block.toJSON()));
+
     // Khởi tạo editor
     this.editorService.init();
     this.initDefaults();
@@ -719,34 +146,6 @@ export class App {
   };
 
   private initDefaults(): void {
-    // Thêm một số blocks mẫu
-    this.blocks = [
-      new BlockModel({
-        id: 'block-1',
-        label: 'Heading',
-        category: 'Text',
-        content: '<h1>Heading Text</h1>',
-      }),
-      new BlockModel({
-        id: 'block-2',
-        label: 'Paragraph',
-        category: 'Text',
-        content: '<p>Paragraph text here</p>',
-      }),
-      new BlockModel({
-        id: 'block-3',
-        label: 'Button',
-        category: 'Components',
-        content: '<button>Click Me</button>',
-      }),
-      new BlockModel({
-        id: 'block-4',
-        label: 'Container',
-        category: 'Layout',
-        content: '<div style="padding: 20px; border: 1px solid #ccc;">Container</div>',
-      }),
-    ];
-
     // Khởi tạo một số sectors cho Style Manager
     this.styleManager.addSector('layout', {
       name: 'Layout',

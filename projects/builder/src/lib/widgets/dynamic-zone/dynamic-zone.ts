@@ -651,6 +651,34 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
         return;
       }
 
+      // Check if clicking on video element or video overlay/placeholder
+      const isVideoElement =
+        target.matches('video, .video-wrapper, .video-overlay, .video-placeholder, .dz-video') ||
+        target.closest('.video-wrapper, .video-overlay, .video-placeholder, .dz-video');
+
+      if (isVideoElement) {
+        // Don't stop propagation - let VideoComponent handle the click to open modal
+        // But still select the component for toolbar
+        if (target !== el && !target.closest('.video-wrapper')) {
+          // Clicking on video child - let it handle modal, but select parent component
+          setTimeout(() => {
+            this.select(ref);
+          }, 0);
+        } else {
+          // Clicking on video wrapper itself - let VideoComponent handle it
+          // Only select if not clicking on interactive elements (overlay, placeholder)
+          const isInteractive =
+            target.matches('.video-overlay, .video-placeholder') ||
+            target.closest('.video-overlay, .video-placeholder');
+          if (!isInteractive) {
+            setTimeout(() => {
+              this.select(ref);
+            }, 0);
+          }
+        }
+        return;
+      }
+
       // Check if clicking on a textual element (heading, paragraph, etc.)
       const isTextualElement =
         target.matches('h1, h2, h3, h4, h5, h6, p, span, .dz-heading, .dz-text') ||
@@ -712,20 +740,22 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
       // Determine if we're over the inner container or the outer element
       const target = e.target as HTMLElement;
       const innerEl = el.querySelector('.section-inner, .row-inner, .column-inner') as HTMLElement;
-
-      // If dragging over inner element, use inner element for calculations
+      // If no inner element found, use the container element itself (for row/column with ng-container)
       const containerEl =
         innerEl && (innerEl.contains(target) || target === innerEl) ? innerEl : el;
 
       containerEl.classList.add('drag-over');
 
       // Show drop indicator for container components (Section, Row, Column)
-      if (typeof (ref.instance as any)?.getChildContainer === 'function' && innerEl) {
-        const innerRect = innerEl.getBoundingClientRect();
+      // Use innerEl if exists, otherwise use container element directly
+      const dropTargetEl =
+        innerEl || (typeof (ref.instance as any)?.getChildContainer === 'function' ? el : null);
+      if (typeof (ref.instance as any)?.getChildContainer === 'function' && dropTargetEl) {
+        const innerRect = dropTargetEl.getBoundingClientRect();
         const relativeY = e.clientY - innerRect.top;
 
         // Calculate insert index within the container
-        const children = Array.from(innerEl.children) as HTMLElement[];
+        const children = Array.from(dropTargetEl.children) as HTMLElement[];
         let insertIndex = children.length;
 
         for (let i = 0; i < children.length; i++) {
@@ -919,19 +949,20 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
         const innerEl = el.querySelector(
           '.section-inner, .row-inner, .column-inner'
         ) as HTMLElement;
-        if (innerEl) {
-          innerEl.addEventListener('dragover', dragOver);
-          innerEl.addEventListener('dragenter', (e: DragEvent) => {
+        // If no inner element found (e.g., using ng-container), use container element directly
+        const dropTargetEl = innerEl || el;
+        if (dropTargetEl) {
+          dropTargetEl.addEventListener('dragover', dragOver);
+          dropTargetEl.addEventListener('dragenter', (e: DragEvent) => {
             e.preventDefault();
             e.stopPropagation();
-            innerEl.classList.add('drag-over');
+            dropTargetEl.classList.add('drag-over');
           });
-          innerEl.addEventListener('dragleave', dragLeave);
-          innerEl.addEventListener('drop', drop);
-          console.log('[DynamicZone] Registered drop events on inner element:', innerEl.className);
-        } else {
-          console.warn(
-            '[DynamicZone] Inner element not found for component with getChildContainer'
+          dropTargetEl.addEventListener('dragleave', dragLeave);
+          dropTargetEl.addEventListener('drop', drop);
+          console.log(
+            '[DynamicZone] Registered drop events on element:',
+            dropTargetEl.className || dropTargetEl.tagName
           );
         }
       }, 0);
