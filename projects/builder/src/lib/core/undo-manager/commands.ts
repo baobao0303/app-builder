@@ -1,4 +1,3 @@
-import { ComponentRef } from '@angular/core';
 import { Command } from './command.interface';
 import { ComponentModelService } from '../dom-components/component-model.service';
 import { ComponentDefinition } from '../dom-components/model/component.model';
@@ -45,8 +44,10 @@ export class DuplicateCommand implements Command {
 
     const definition = sourceModel.toJSON();
     // Remove id to generate new one
-    if (definition.attributes) {
-      delete definition.attributes['id'];
+    if (definition.attributes && definition.attributes['id']) {
+      const attrs = { ...definition.attributes };
+      delete attrs['id'];
+      definition.attributes = attrs;
     }
 
     const cloned = this.componentModelService.createComponent(
@@ -107,11 +108,9 @@ export class DeleteCommand implements Command {
     );
 
     // Restore the original ID
-    if (this.deletedDefinition.attributes?.id) {
-      this.componentModelService.updateComponentId(
-        restored.getId(),
-        this.deletedDefinition.attributes.id
-      );
+    const originalId = this.deletedDefinition.attributes?.['id'];
+    if (originalId) {
+      this.componentModelService.updateComponentId(restored.getId(), originalId);
     }
   }
 }
@@ -284,8 +283,9 @@ export class CrossContainerMoveCommand implements Command {
     );
 
     // Restore original ID
-    if (definition.attributes?.id) {
-      this.componentModelService.updateComponentId(restored.getId(), definition.attributes.id);
+    const originalId = definition.attributes?.['id'];
+    if (originalId) {
+      this.componentModelService.updateComponentId(restored.getId(), originalId);
     }
   }
 
@@ -303,9 +303,9 @@ export class CrossContainerMoveCommand implements Command {
     );
 
     // Restore original ID
-    if (definition.attributes?.id) {
-      this.componentModelService.updateComponentId(restored.getId(), definition.attributes.id);
+    const originalId = definition.attributes?.['id'];
+    if (originalId) {
+      this.componentModelService.updateComponentId(restored.getId(), originalId);
     }
   }
 }
-
