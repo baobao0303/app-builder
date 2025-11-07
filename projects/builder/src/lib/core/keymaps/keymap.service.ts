@@ -1,33 +1,36 @@
 import { Injectable, OnDestroy } from '@angular/core';
+import { CommandManagerService } from '../new/command-manager/command-manager.service';
 
 type KeyHandler = (e: KeyboardEvent) => void;
 
 @Injectable({ providedIn: 'root' })
 export class KeymapService implements OnDestroy {
-  private bindings = new Map<string, KeyHandler>();
-  private onKeydown = (e: KeyboardEvent) => {
-    const combo = this.toCombo(e);
-    const handler = this.bindings.get(combo);
-    if (handler) {
-      e.preventDefault();
-      handler(e);
-    }
-  };
+  private bindings = new Map<string, string>(); // combo -> commandId
 
-  constructor() {
-    window.addEventListener('keydown', this.onKeydown, { passive: false });
-  }
+  constructor(private commandManager: CommandManagerService) {}
 
-  ngOnDestroy(): void {
-    window.removeEventListener('keydown', this.onKeydown as any);
-  }
+  ngOnDestroy(): void {}
 
   bind(combo: string, handler: KeyHandler): void {
-    this.bindings.set(this.normalize(combo), handler);
+    const normalized = this.normalize(combo);
+    const commandId = `legacy.keymap.${normalized}`;
+    this.bindings.set(normalized, commandId);
+    this.commandManager.register({
+      id: commandId,
+      name: `Key Binding ${normalized}`,
+      shortcuts: { key: normalized },
+      handler: () => handler(new KeyboardEvent('keydown')),
+      category: 'LegacyKeymap',
+    });
   }
 
   unbind(combo: string): void {
-    this.bindings.delete(this.normalize(combo));
+    const normalized = this.normalize(combo);
+    const commandId = this.bindings.get(normalized);
+    if (commandId) {
+      this.commandManager.unregister(commandId);
+      this.bindings.delete(normalized);
+    }
   }
 
   private toCombo(e: KeyboardEvent): string {

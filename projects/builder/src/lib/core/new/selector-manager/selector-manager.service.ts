@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { BehaviorSubject, Observable } from 'rxjs';
 
 /**
  * Selector Manager Service
@@ -9,6 +10,16 @@ import { Injectable } from '@angular/core';
 })
 export class SelectorManagerService {
   private selectors: Map<string, string[]> = new Map(); // componentId -> selectors[]
+  private selectedIdSubject = new BehaviorSubject<string | null>(null);
+
+  /** Stream of currently selected component id (for outlining/highlight consumers) */
+  get selected$(): Observable<string | null> {
+    return this.selectedIdSubject.asObservable();
+  }
+
+  getSelectedId(): string | null {
+    return this.selectedIdSubject.getValue();
+  }
 
   /**
    * Add selector to component
@@ -53,6 +64,11 @@ export class SelectorManagerService {
    */
   clearSelectors(componentId: string): void {
     this.selectors.delete(componentId);
+  }
+
+  /** Select a component by id (downstream can draw selection frame) */
+  select(componentId: string | null): void {
+    this.selectedIdSubject.next(componentId);
   }
 
   /**

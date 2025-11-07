@@ -4,6 +4,9 @@ import { HtmlGeneratorService } from '../code-generator/html-generator.service';
 import { CssGeneratorService } from '../code-generator/css-generator.service';
 import { JsGeneratorService } from '../code-generator/js-generator.service';
 import { ComponentDefinition } from '../dom-components/model/component.model';
+import { CommandManagerService } from '../new/command-manager/command-manager.service';
+import { UndoManagerService } from '../undo-manager/undo-manager.service';
+import { registerCoreCommands } from '../new/command-manager/register/register.command';
 
 export interface EditorConfig {
   [key: string]: any;
@@ -22,7 +25,9 @@ export class EditorService {
     private componentModelService: ComponentModelService,
     private htmlGenerator: HtmlGeneratorService,
     private cssGenerator: CssGeneratorService,
-    private jsGenerator: JsGeneratorService
+    private jsGenerator: JsGeneratorService,
+    private commandManager: CommandManagerService,
+    private undoManager: UndoManagerService
   ) {}
 
   /**
@@ -33,6 +38,9 @@ export class EditorService {
       console.warn('Editor already initialized');
       return;
     }
+
+    // Register core commands once
+    registerCoreCommands(this.commandManager, { undoManager: this.undoManager });
 
     // TODO: Khởi tạo các modules khác ở đây
     this.initialized = true;

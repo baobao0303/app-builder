@@ -23,7 +23,7 @@ import {
   AComponent,
   SectionComponent,
   BlockModel,
-  CommandService,
+  CommandManagerService,
   KeymapService,
   CodeManagerService,
   ComponentModel,
@@ -663,7 +663,7 @@ export class App {
     private traitManager: TraitManagerService,
     private storageManager: StorageManagerService,
     private undoManager: UndoManagerService,
-    private commands: CommandService,
+    private commandManager: CommandManagerService,
     private keymaps: KeymapService,
     private codeManager: CodeManagerService
   ) {
@@ -1110,9 +1110,24 @@ export class App {
   }
 
   private registerCommands(): void {
-    this.commands.register('open-assets', () => this.setActivePanel('assets'));
-    this.commands.register('save', () => this.saveProject());
-    this.commands.register('export-html', () => this.exportZone());
+    this.commandManager.register({
+      id: 'open-assets',
+      name: 'Open Assets',
+      handler: () => this.setActivePanel('assets'),
+      category: 'App',
+    });
+    this.commandManager.register({
+      id: 'save',
+      name: 'Save Project',
+      handler: () => this.saveProject(),
+      category: 'App',
+    });
+    this.commandManager.register({
+      id: 'export-html',
+      name: 'Export HTML',
+      handler: () => this.exportZone(),
+      category: 'App',
+    });
   }
 
   private bindKeymaps(): void {

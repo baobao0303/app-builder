@@ -15,25 +15,34 @@ import {
 import { CommonModule } from '@angular/common';
 import { CoreBase } from '../../core/core.base';
 import { ComponentModelService } from '../../core/dom-components/component-model.service';
-import {
-  ComponentDefinition,
-  ComponentModel,
-} from '../../core/dom-components/model/component.model';
-import { HtmlBlock } from '../html-block/html-block';
+import { ComponentDefinition } from '../../core/dom-components/model/component.model';
 import { ParserService } from '../../core/parser/parser.service';
 import { SelectionService } from '../../core/editor/selection.service';
+import { SelectorManagerService } from '../../core/new/selector-manager/selector-manager.service';
+import { DragDropManagerService } from '../../core/new/drag-drop-manager/drag-drop-manager.service';
+import { captureRootDropContext, handleInternalDrop } from './interaction/drag-drop-context';
+import { handleExternalDrop } from './interaction/external-drop-handler';
 import { TraitManagerService } from '../../core/trait-manager/trait-manager.service';
+import { exportHtmlFrom, exportStylesFrom } from './interaction/export';
+import {
+  COMPONENT_STYLES,
+  resolveBlockHtml as resolveBlockHtmlHelper,
+  getElementSelector as getElementSelectorHelper,
+} from './interaction/styles/component-styles';
+import { applyTraitsForElement } from './interaction/traits';
+import {
+  applyInlineEditDirective as applyInlineEdit,
+  logDOMPosition as logDOMPositionUtil,
+} from './interaction/editor-utils';
+import {
+  createNestedComponents as createNestedComponentsHelper,
+  NestedContext,
+} from './interaction/nested';
+import { SelectionController } from './interaction/selection';
 import { DropIndicatorService } from '../../core/utils/drop-indicator.service';
 import { InlineEditService } from '../../core/editor/inline-edit.service';
-import { FloatingToolbarComponent } from '../components/floating-toolbar/floating-toolbar.component';
-import { FloatingToolbarHeadingComponent } from '../components/floating-toolbar/floating-toobar-heading.component';
-import { ComponentRef as AngularComponentRef } from '@angular/core';
-import {
-  UndoManagerService,
-  MoveCommand,
-  DuplicateCommand,
-  DeleteCommand,
-} from '../../core/undo-manager/undo-manager.service';
+import { initLifecycle, destroyLifecycle, LifecycleHandlers } from './interaction/lifecycle';
+import { UndoManagerService } from '../../core/undo-manager/undo-manager.service';
 
 interface ComponentMeta {
   container: ViewContainerRef;
@@ -49,7 +58,7 @@ interface ComponentMeta {
   styleUrl: './dynamic-zone.scss',
 })
 export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
-  // Registry: key -> component type (được truyền từ ngoài, ví dụ toolbox quản lý map này)
+  // Registry: key -> component type
   @Input() registry: Record<string, Type<unknown>> = {};
 
   // Registry cho component definitions (tùy chọn, để generate HTML từ model)
@@ -74,17 +83,16 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
   private containerIds = new Map<ViewContainerRef, string>();
   private containersById = new Map<string, ViewContainerRef>();
   private selected?: ComponentRef<any>;
-  private toolbarRef?: AngularComponentRef<FloatingToolbarComponent>;
-  private headingToolbarRef?: AngularComponentRef<FloatingToolbarHeadingComponent>;
-  private selectedElement?: HTMLElement;
-  private clickOutsideHandler?: (e: MouseEvent) => void;
-  private canvasClickHandler?: (e: MouseEvent) => void;
   private draggingRef?: ComponentRef<any>;
+  private lifecycleHandlers?: LifecycleHandlers;
+  private selectionController!: SelectionController;
 
   // Services quản lý model và parse HTML
   private componentModelService = inject(ComponentModelService);
   private parser = inject(ParserService);
   private selection = inject(SelectionService);
+  private selectorManager = inject(SelectorManagerService);
+  private dragDropManager = inject(DragDropManagerService);
   private traitManager = inject(TraitManagerService);
   private dropIndicator = inject(DropIndicatorService);
   private inlineEditService = inject(InlineEditService);
@@ -199,110 +207,87 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit(): void {
-    // Add click handler for canvas to deselect when clicking on empty area
-    if (this.hostEl?.nativeElement) {
-      this.canvasClickHandler = (e: MouseEvent) => {
-        const target = e.target as HTMLElement;
-        // Only deselect if clicking directly on canvas (host element), not on child elements
-        if (target === this.hostEl.nativeElement) {
-          // Click is directly on canvas empty area
-          console.log('[DZ] Click on canvas empty area, deselecting...');
-          this.deselect();
-        } else {
-          // Check if click is on empty area (not on any dz-item or interactive element)
-          const clickedItem = target.closest('.dz-item');
-          const isInteractive = target.closest(
-            'input, button, select, textarea, .floating-toolbar'
-          );
-          // If click is on host element but not on any item or interactive element, deselect
-          if (
-            this.hostEl.nativeElement.contains(target) &&
-            !clickedItem &&
-            !isInteractive &&
-            target !== this.hostEl.nativeElement
-          ) {
-            // Check if target is a direct child of host (empty area)
-            const isDirectChild = Array.from(this.hostEl.nativeElement.children).includes(target);
-            if (isDirectChild && !target.classList.contains('dz-item')) {
-              console.log('[DZ] Click on canvas empty area (direct child), deselecting...');
-              this.deselect();
-            }
-          }
-        }
-      };
-      this.hostEl.nativeElement.addEventListener('click', this.canvasClickHandler, true);
-      console.log('[DZ] Canvas click handler added');
-    }
+    this.lifecycleHandlers = initLifecycle({
+      hostEl: this.hostEl?.nativeElement || null,
+      deselect: () => this.deselect(),
+      undo: () => {
+        if (this.undoManager.canUndo()) this.undoManager.undo();
+      },
+      redo: () => {
+        if (this.undoManager.canRedo()) this.undoManager.redo();
+      },
+    });
 
-    // Add keyboard shortcuts for undo/redo
-    this.setupKeyboardShortcuts();
+    this.selectionController = new SelectionController({
+      container: this.container,
+      appRef: this.appRef,
+      injector: this.injector,
+      selectionService: this.selection,
+      selectorManager: this.selectorManager,
+      traitManager: this.traitManager,
+      applyTraits: (targetEl) => applyTraitsForElement(this.traitManager, targetEl),
+      logDom: (element, selectedId) =>
+        logDOMPositionUtil(element, selectedId, (id) =>
+          this.componentModelService.getComponent(id)
+        ),
+      selected: this.selected,
+      getSelected: () => this.selected,
+      setSelected: (ref) => {
+        this.selected = ref;
+      },
+      getContainerOfSelected: () => {
+        const current = this.selected;
+        if (!current) return this.container;
+        return this.componentMeta.get(current)?.container ?? this.container;
+      },
+      indexOfSelected: () => {
+        const current = this.selected;
+        return current ? this.indexOfRef(current) : -1;
+      },
+      componentRefs: this.componentRefs,
+      componentModelService: this.componentModelService,
+      undoManager: this.undoManager,
+      trackComponentRef: (ref, container, options) =>
+        this.trackComponentRef(ref, container, options),
+      getContainerRefs: (container, create) => this.getContainerRefs(container, create),
+      setContainerRef: (container) => this.setContainerRef(container),
+      insertWidget: (component, index) => this.insertWidget(component, index),
+      createWidget: (component, options) => this.createWidget(component, options),
+      registerDraggable: (ref) => this.registerDraggable(ref),
+      reorderWithinContainer: (container, from, to) =>
+        this.reorderWithinContainer(container, from, to),
+      registry: this.registry,
+      nextComponent: this.nextComponent,
+      setNextComponent: (component) => {
+        this.nextComponent = component;
+      },
+      hideToolbar: () => this.selectionController.hideToolbar(),
+      getNextComponent: () => this.nextComponent,
+      indexOfRef: (ref) => this.indexOfRef(ref),
+    });
   }
 
-  private setupKeyboardShortcuts(): void {
-    const keydownHandler = (e: KeyboardEvent) => {
-      // Check if user is typing in an input field
-      const target = e.target as HTMLElement;
-      const isEditing =
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.contentEditable === 'true';
-
-      // Ctrl+Z or Cmd+Z for Undo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !isEditing) {
-        e.preventDefault();
-        if (this.undoManager.canUndo()) {
-          this.undoManager.undo();
-          console.log('[DZ] Undo triggered via keyboard');
-        }
-        return;
-      }
-
-      // Ctrl+Y or Cmd+Shift+Z for Redo
-      if (
-        ((e.ctrlKey || e.metaKey) && e.key === 'y') ||
-        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z')
-      ) {
-        if (!isEditing) {
-          e.preventDefault();
-          if (this.undoManager.canRedo()) {
-            this.undoManager.redo();
-            console.log('[DZ] Redo triggered via keyboard');
-          }
-        }
-        return;
-      }
-    };
-
-    document.addEventListener('keydown', keydownHandler);
-
-    // Store handler for cleanup
-    (this as any).__keydownHandler = keydownHandler;
-  }
+  private setupKeyboardShortcuts(): void {}
 
   ngOnDestroy(): void {
-    // Cleanup event listeners
-    if (this.canvasClickHandler && this.hostEl?.nativeElement) {
-      this.hostEl.nativeElement.removeEventListener('click', this.canvasClickHandler, true);
-      console.log('[DZ] Canvas click handler removed');
+    if (this.lifecycleHandlers) {
+      destroyLifecycle({ hostEl: this.hostEl?.nativeElement || null }, this.lifecycleHandlers);
+      this.lifecycleHandlers = undefined;
     }
-    if (this.clickOutsideHandler) {
-      document.removeEventListener('click', this.clickOutsideHandler, true);
-      console.log('[DZ] Click outside handler removed');
-    }
-
-    // Remove keyboard shortcut handler
-    const keydownHandler = (this as any).__keydownHandler;
-    if (keydownHandler) {
-      document.removeEventListener('keydown', keydownHandler);
-      console.log('[DZ] Keyboard shortcut handler removed');
-    }
-
-    // Hide toolbar and deselect
+    this.selectionController?.destroy();
     this.deselect();
   }
 
   // Gọi từ toolbox khi click một item -> dùng helper của CoreBase
-  add(key: string, options?: { append?: boolean; index?: number }): void {
+  add(
+    key: string,
+    options?: {
+      append?: boolean;
+      index?: number;
+      targetContainer?: ViewContainerRef;
+      parentComponentId?: string;
+    }
+  ): void {
     console.log('[DynamicZone.add] key=', key, 'options=', options);
     const cmp = this.registry[key];
     if (!cmp) return;
@@ -383,74 +368,31 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
     parentRef: ComponentRef<any>,
     children: ComponentDefinition[]
   ): void {
-    console.log('[DynamicZone.createNestedComponents] Creating', children.length, 'children');
-    // Get child container from parent component
-    const parentContainer =
-      typeof (parentRef.instance as any)?.getChildContainer === 'function'
-        ? (parentRef.instance as any).getChildContainer()
-        : null;
+    createNestedComponentsHelper(this.buildNestedContext(), parentRef, children);
+  }
 
-    if (!parentContainer) {
-      console.warn('[DynamicZone] Parent component does not have getChildContainer()');
-      return;
-    }
-    console.log('[DynamicZone.createNestedComponents] Parent container found');
+  private buildNestedContext(): NestedContext {
+    const context: NestedContext = {
+      registry: this.registry,
+      setNextComponent: (component: Type<any>) => {
+        this.nextComponent = component;
+      },
+      setContainerRef: (container: ViewContainerRef) => this.setContainerRef(container),
+      createWidget: (component, options) => this.createWidget(component, options),
+      componentRefs: this.componentRefs,
+      getContainerRefs: (container, create) => this.getContainerRefs(container, create),
+      trackComponentRef: (ref, container, options) =>
+        this.trackComponentRef(ref, container, options),
+      registerDraggable: (ref) => this.registerDraggable(ref),
+      createNestedComponents: () => {
+        /* placeholder, assigned below */
+      },
+    };
 
-    // Create child components
-    children.forEach((childDef, index) => {
-      // Find component type from registry based on data-widget attribute or tagName
-      const widgetKey = childDef.attributes?.['data-widget'];
-      const componentType = widgetKey ? this.registry[widgetKey] : null;
+    context.createNestedComponents = (parentRef, children) =>
+      createNestedComponentsHelper(context, parentRef, children);
 
-      console.log(
-        '[DynamicZone.createNestedComponents] Child',
-        index,
-        'widgetKey:',
-        widgetKey,
-        'found:',
-        !!componentType
-      );
-
-      if (!componentType) {
-        console.warn('[DynamicZone] No component found for', widgetKey || childDef.tagName);
-        return;
-      }
-
-      // Create child component
-      this.nextComponent = componentType as Type<any>;
-      this.setContainerRef(parentContainer);
-      const childRef = this.createWidget(this.nextComponent, { append: true });
-      console.log('[DynamicZone.createNestedComponents] Child', index, 'created:', !!childRef);
-
-      if (childRef) {
-        const parentComponentId = this.componentRefs.get(parentRef);
-        const childRefs = this.getContainerRefs(parentContainer);
-        this.trackComponentRef(childRef, parentContainer, {
-          parentId: parentComponentId,
-          insertIndex: childRefs.length,
-        });
-
-        this.registerDraggable(childRef);
-
-        // Apply styles from componentDefinition if available
-        if (childDef.style) {
-          const hostEl = (childRef.location?.nativeElement || null) as HTMLElement | null;
-          if (hostEl) {
-            Object.entries(childDef.style).forEach(([prop, value]) => {
-              (hostEl.style as any)[prop] = value;
-            });
-          }
-        }
-
-        // Recursively create nested components
-        if (childDef.components && childDef.components.length > 0) {
-          this.createNestedComponents(childRef, childDef.components);
-        }
-
-        // Track component model mapping if componentId exists
-        // Note: ComponentModel is already created by ComponentModelService in add() method
-      }
-    });
+    return context;
   }
 
   // Cho phép thả: chặn hành vi mặc định để drop hoạt động
@@ -467,6 +409,13 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
     const width = rect.width;
     const insertIndex = this.calculateInsertIndex(relativeY);
     const indicatorY = this.getIndicatorY(relativeY, insertIndex);
+
+    // Publish drag-over state to manager (root container)
+    this.dragDropManager.updateOver({
+      overContainerId: 'root',
+      insertIndex,
+      rect: { left: rect.left, top: rect.top + indicatorY, width },
+    });
 
     this.dropIndicator.show(
       rect.left,
@@ -508,14 +457,28 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
   // Khi thả: lấy key từ dataTransfer và insert widget tại vị trí green line
   onDrop(ev: DragEvent) {
     ev.preventDefault();
+    ev.stopPropagation(); // Stop event from bubbling further
     this.isDragOver = false;
 
-    // Lấy insertIndex từ drop indicator trước khi hide
-    const indicator = this.dropIndicator.getIndicator();
-    const insertIndex = indicator.insertIndex ?? undefined;
+    const dropContext = captureRootDropContext({
+      dragDropManager: this.dragDropManager,
+      dropIndicator: this.dropIndicator,
+      getContainerById: (id) => this.getContainerById(id),
+      fallbackContainer: this.container,
+    });
+    const dropState = dropContext.dropState;
+    const overContainerId = dropContext.overContainerId ?? 'root';
+    const insertIndex = dropState.over?.insertIndex;
+    const dropTargetContainer = dropContext.targetContainer;
 
     this.dropIndicator.hide();
     this.hostEl.nativeElement.classList.remove('dz-body-drag');
+
+    // Complete drop for manager
+    this.dragDropManager.completeDrop({
+      targetContainerId: overContainerId,
+      targetIndex: insertIndex ?? 0,
+    });
     console.log(
       '[DynamicZone.drop] types=',
       ev.dataTransfer?.types,
@@ -526,174 +489,75 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
     );
 
     // Handle file drops (images, etc.)
-    const files = ev.dataTransfer?.files;
-    if (files && files.length > 0) {
-      const file = files[0];
-      if (file.type.startsWith('image/')) {
-        console.log('[DynamicZone.drop] Image file dropped:', file.name, file.type);
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const imageSrc = e.target?.result as string;
-          if (imageSrc) {
-            // Create ImageComponent
-            const imageKey = 'image';
-            if (this.registry[imageKey]) {
-              this.add(
-                imageKey,
-                insertIndex !== undefined ? { index: insertIndex } : { append: true }
-              );
-              // Set image source after component is created
-              // The add() method already calls registerDraggable, so we just need to set the image source
-              setTimeout(() => {
-                // Find the newly created component ref
-                const topRefs = this.getContainerRefs(this.container, false);
-                let newRef: ComponentRef<any> | undefined;
-                if (insertIndex !== undefined) {
-                  newRef = topRefs[insertIndex];
-                } else {
-                  newRef = topRefs[topRefs.length - 1];
-                }
-                if (newRef && (newRef.instance as any)?.imageSrc !== undefined) {
-                  (newRef.instance as any).imageSrc = imageSrc;
-                  (newRef.instance as any).imageAlt = file.name || 'Image';
-                  (newRef.changeDetectorRef as any)?.detectChanges?.();
-                  console.log('[DynamicZone.drop] Image source set:', imageSrc);
-                }
-              }, 50);
-            }
+    const extPayload = this.dragDropManager.parseExternalPayload(ev.dataTransfer);
+    if (extPayload.type === 'file-image') {
+      const file = extPayload.file;
+      console.log('[DynamicZone.drop] Image file dropped:', file.name, file.type);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const imageSrc = e.target?.result as string;
+        if (imageSrc) {
+          // Create ImageComponent
+          const imageKey = 'image';
+          if (this.registry[imageKey]) {
+            this.add(
+              imageKey,
+              insertIndex !== undefined ? { index: insertIndex } : { append: true }
+            );
+            // Set image source after component is created
+            // The add() method already calls registerDraggable, so we just need to set the image source
+            setTimeout(() => {
+              // Find the newly created component ref
+              const topRefs = this.getContainerRefs(this.container, false);
+              let newRef: ComponentRef<any> | undefined;
+              if (insertIndex !== undefined) {
+                newRef = topRefs[insertIndex];
+              } else {
+                newRef = topRefs[topRefs.length - 1];
+              }
+              if (newRef && (newRef.instance as any)?.imageSrc !== undefined) {
+                (newRef.instance as any).imageSrc = imageSrc;
+                (newRef.instance as any).imageAlt = file.name || 'Image';
+                (newRef.changeDetectorRef as any)?.detectChanges?.();
+                console.log('[DynamicZone.drop] Image source set:', imageSrc);
+              }
+            }, 50);
           }
-        };
-        reader.readAsDataURL(file);
-        return;
-      }
+        }
+      };
+      reader.readAsDataURL(file);
+      return;
     }
 
     // Handle Blocks panel: application/json payload with HTML content
-    const json = ev.dataTransfer?.getData('application/json');
-    if (json) {
-      try {
-        const data = JSON.parse(json) as { content?: string };
-        const html = data?.content || '';
-        if (html) {
-          console.log('[DynamicZone.drop] using JSON html length=', html.length);
-          this.setContainerRef(this.container);
+    const handled = handleExternalDrop(
+      {
+        parentId: undefined,
+        useVcr: dropTargetContainer,
+        componentRefs: this.componentRefs,
+        getContainerRefs: (container, create) => this.getContainerRefs(container, create),
+        trackComponentRef: (ref, container, options) =>
+          this.trackComponentRef(ref, container, options),
+        registerDraggable: (ref) => this.registerDraggable(ref),
+        componentModelService: this.componentModelService,
+        parser: this.parser,
+        dragDropManager: this.dragDropManager,
+        registry: this.registry,
+        componentDefinitions: this.componentDefinitions,
+        setContainerRef: (container) => this.setContainerRef(container),
+        createWidget: (component, options) => this.createWidget(component, options),
+        insertWidget: (component, index) => this.insertWidget(component, index),
+        createNestedComponents: (parentRef, defs) => this.createNestedComponents(parentRef, defs),
+        add: (key, options) => this.add(key, options),
+      },
+      extPayload,
+      dropContext.indicatorState,
+      (key) => resolveBlockHtmlHelper(key)
+    );
 
-          // Insert tại index nếu có, otherwise append
-          let ref: ComponentRef<any> | undefined;
-          if (insertIndex !== undefined) {
-            ref = this.insertWidget(HtmlBlock, insertIndex) as ComponentRef<any>;
-          } else {
-            ref = this.createWidget(HtmlBlock, { append: true });
-          }
-
-          if (ref && (ref.instance as any)) {
-            (ref.instance as any).html = html;
-            (ref.changeDetectorRef as any)?.detectChanges?.();
-          }
-
-          // Also reflect into ComponentModel tree for Layers
-          let root = this.componentModelService.getRootComponent();
-          if (!root) {
-            root = this.componentModelService.setRootComponent({
-              tagName: 'div',
-              attributes: { 'data-zone': 'dynamic-zone' },
-            });
-          }
-          const def =
-            this.parser.parseHtml(html) ||
-            ({
-              tagName: 'div',
-              content: html,
-            } as ComponentDefinition);
-          const created =
-            insertIndex !== undefined
-              ? this.componentModelService.createComponent(def, root.getId(), insertIndex)
-              : this.componentModelService.createComponent(def, root.getId());
-          console.log('[DynamicZone.drop] model created from JSON id=', created.getId());
-
-          // Track & enable drag for newly added block
-          if (ref) {
-            const parentId = created.getParent()?.getId() ?? root.getId();
-            const refs = this.getContainerRefs(this.container);
-            const position =
-              insertIndex !== undefined && insertIndex >= 0 ? insertIndex : refs.length;
-            this.trackComponentRef(ref, this.container, {
-              parentId,
-              componentId: created.getId(),
-              insertIndex: position,
-            });
-            this.registerDraggable(ref);
-          }
-          return;
-        }
-      } catch (err) {
-        console.warn('[DynamicZone.drop] JSON parse failed, fallback to text/plain', err);
-      }
+    if (!handled) {
+      console.warn('[DynamicZone.drop] unhandled payload', extPayload);
     }
-
-    const key = ev.dataTransfer?.getData('text/plain');
-    console.log('[DynamicZone.drop] text/plain key=', key);
-    if (!key) {
-      console.warn('[DynamicZone.drop] no usable payload');
-      return;
-    }
-
-    // 1) If it's a registered Angular widget key -> add at insertIndex
-    if (this.registry[key]) {
-      console.log('[DynamicZone.drop] found registry key, add()', key, 'at index', insertIndex);
-      this.add(key, insertIndex !== undefined ? { index: insertIndex } : { append: true });
-      return;
-    }
-
-    // 2) Fallback: plain text label from Blocks panel -> map to simple HTML
-    const html = this.resolveBlockHtml(key);
-    if (html) {
-      console.log('[DynamicZone.drop] fallback html for key=', key, 'len=', html.length);
-      this.setContainerRef(this.container);
-
-      // Insert tại index nếu có, otherwise append
-      let ref: ComponentRef<any> | undefined;
-      if (insertIndex !== undefined) {
-        ref = this.insertWidget(HtmlBlock, insertIndex) as ComponentRef<any>;
-      } else {
-        ref = this.createWidget(HtmlBlock, { append: true });
-      }
-
-      if (ref && (ref.instance as any)) {
-        (ref.instance as any).html = html;
-        (ref.changeDetectorRef as any)?.detectChanges?.();
-      }
-
-      // Reflect to model
-      let root = this.componentModelService.getRootComponent();
-      if (!root) {
-        root = this.componentModelService.setRootComponent({
-          tagName: 'div',
-          attributes: { 'data-zone': 'dynamic-zone' },
-        });
-      }
-      const def =
-        this.parser.parseHtml(html) || ({ tagName: 'div', content: html } as ComponentDefinition);
-      const created2 =
-        insertIndex !== undefined
-          ? this.componentModelService.createComponent(def, root.getId(), insertIndex)
-          : this.componentModelService.createComponent(def, root.getId());
-      console.log('[DynamicZone.drop] model created from fallback id=', created2.getId());
-
-      if (ref) {
-        const parentId = created2.getParent()?.getId() ?? root.getId();
-        const refs = this.getContainerRefs(this.container);
-        const position = insertIndex !== undefined && insertIndex >= 0 ? insertIndex : refs.length;
-        this.trackComponentRef(ref, this.container, {
-          parentId,
-          componentId: created2.getId(),
-          insertIndex: position,
-        });
-        this.registerDraggable(ref);
-      }
-      return;
-    }
-    console.warn('[DynamicZone.drop] unhandled key=', key);
   }
 
   // Khi rời vùng thả, bỏ highlight
@@ -712,247 +576,31 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
     return this.nextComponent as Type<any>;
   }
 
-  // Xuất HTML: 実際のDOM要素から取得（画像や動的コンテンツを含む）
+  // Xuất HTML
   exportHtml(): string {
-    // 実際のDOM要素からHTMLを取得（画像などの動的コンテンツを含む）
     const container = this.hostEl?.nativeElement;
     if (!container) return '';
-
-    // クローンを作成して、編集可能な要素をクリーンアップ
-    const clone = container.cloneNode(true) as HTMLElement;
-
-    // Angular固有の属性やクラスを削除
-    const angularAttributes = ['_ngcontent', 'ng-version', 'ng-reflect'];
-    const angularClasses = [
-      'dz-item',
-      'dz-selected',
-      'dz-row', // 保留 'row' 类，只移除 'dz-row'
-      'dz-column', // 保留 'column' 类，只移除 'dz-column'
-      'dz-image',
-      'dz-list',
-      'dz-card',
-    ];
-
-    const cleanElement = (el: HTMLElement) => {
-      // 如果当前元素本身就是 column-label、image-overlay 或 image-placeholder，直接移除并返回
-      if (
-        el.classList.contains('column-label') ||
-        el.classList.contains('image-overlay') ||
-        el.classList.contains('image-placeholder')
-      ) {
-        el.remove();
-        return; // 移除后不需要继续处理
-      }
-
-      // 移除编辑相关的元素（预览和导出时不需要）
-      // 使用 querySelectorAll 递归查找所有需要移除的元素
-      const imageOverlays = el.querySelectorAll('.image-overlay');
-      imageOverlays.forEach((overlay) => overlay.remove());
-
-      const columnLabels = el.querySelectorAll('.column-label');
-      columnLabels.forEach((label) => label.remove());
-
-      const imagePlaceholders = el.querySelectorAll('.image-placeholder');
-      imagePlaceholders.forEach((placeholder) => placeholder.remove());
-
-      // 移除图片包装器的边框和背景（预览时不需要）
-      if (el.classList.contains('image-wrapper')) {
-        el.style.border = 'none';
-        el.style.background = 'transparent';
-        el.style.minHeight = 'auto';
-      }
-
-      // 属性をクリーンアップ
-      Array.from(el.attributes).forEach((attr) => {
-        if (angularAttributes.some((a) => attr.name.startsWith(a))) {
-          el.removeAttribute(attr.name);
-        }
-      });
-
-      // クラスをクリーンアップ
-      if (el.className) {
-        const classes = el.className.split(' ').filter((c) => !angularClasses.includes(c));
-        if (classes.length > 0) {
-          el.className = classes.join(' ');
-        } else {
-          el.removeAttribute('class');
-        }
-      }
-
-      // 移除编辑相关的样式属性
-      if (el.style) {
-        // 移除 cursor: pointer（预览时不需要）
-        if (el.style.cursor === 'pointer') {
-          el.style.cursor = '';
-        }
-      }
-
-      // 子要素も再帰的にクリーンアップ（在移除不需要的元素之后）
-      // 使用 Array.from 创建副本，因为 children 可能在迭代时被修改
-      const children = Array.from(el.children);
-      children.forEach((child) => {
-        cleanElement(child as HTMLElement);
-      });
-    };
-
-    // 在开始递归清理之前，先移除所有编辑相关的元素（确保所有 column-label 都被移除）
-    const allImageOverlays = clone.querySelectorAll('.image-overlay');
-    allImageOverlays.forEach((overlay) => overlay.remove());
-
-    const allColumnLabels = clone.querySelectorAll('.column-label');
-    allColumnLabels.forEach((label) => label.remove());
-
-    const allImagePlaceholders = clone.querySelectorAll('.image-placeholder');
-    allImagePlaceholders.forEach((placeholder) => placeholder.remove());
-
-    cleanElement(clone);
-
-    return clone.innerHTML;
+    return exportHtmlFrom(container);
   }
 
-  // Component styles mapping - 组件样式映射
-  private readonly componentStyles: Record<string, string> = {
-    '.column': `
-      flex: 1;
-      min-height: 60px;
-      border: none;
-      background: transparent;
-      position: relative;
-      width: 100%;
-      box-sizing: border-box;
-    `,
-    '.column[style*="width"]': `
-      flex: none;
-    `,
-    '.column-label': `
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: #64748b;
-      font-size: 14px;
-      font-weight: 500;
-      pointer-events: none;
-      z-index: 1;
-    `,
-    '.column-inner': `
-      width: 100%;
-      box-sizing: border-box;
-    `,
-    '.column-inner:not(:empty) ~ .column-label': `
-      display: none;
-    `,
-    '.row': `
-      display: flex;
-      gap: 0;
-      padding: 0;
-      min-height: 60px;
-      border: none;
-      background: transparent;
-      width: 100%;
-      box-sizing: border-box;
-    `,
-    '.row-inner': `
-      display: flex;
-      gap: 0;
-      width: 100%;
-      min-height: 44px;
-      flex: 1;
-    `,
-    '.image-wrapper': `
-      position: relative;
-      width: 100%;
-      border: none;
-      background: transparent;
-      overflow: hidden;
-    `,
-    '.image': `
-      width: 100%;
-      height: auto;
-      display: block;
-    `,
-  };
+  // Component styles are centralized in interaction/styles/component-styles.ts
 
   // 実際のDOM要素からスタイルを取得
   exportStyles(): string {
     const container = this.hostEl?.nativeElement;
     if (!container) return '';
-
-    const styles: string[] = [];
-    const processed = new Set<HTMLElement>();
-    const addedComponentStyles = new Set<string>();
-
-    const collectStyles = (el: HTMLElement) => {
-      if (processed.has(el)) return;
-      processed.add(el);
-
-      // インラインスタイルを取得
-      const inlineStyle = el.getAttribute('style');
-      if (inlineStyle) {
-        const selector = this.getElementSelector(el);
-        if (selector) {
-          styles.push(`${selector} { ${inlineStyle} }`);
-        }
-      }
-
-      // 检查并添加组件样式
-      const classes = Array.from(el.classList);
-      for (const className of classes) {
-        const styleKey = `.${className}`;
-        if (this.componentStyles[styleKey] && !addedComponentStyles.has(styleKey)) {
-          styles.push(`${styleKey} { ${this.componentStyles[styleKey].trim()} }`);
-          addedComponentStyles.add(styleKey);
-        }
-      }
-
-      // 检查特殊选择器（如 .column[style*="width"]）
-      if (el.classList.contains('column') && el.getAttribute('style')?.includes('width')) {
-        const specialKey = '.column[style*="width"]';
-        if (this.componentStyles[specialKey] && !addedComponentStyles.has(specialKey)) {
-          styles.push(`${specialKey} { ${this.componentStyles[specialKey].trim()} }`);
-          addedComponentStyles.add(specialKey);
-        }
-      }
-
-      // 检查 column-inner 和 column-label 的关系
-      if (el.classList.contains('column-inner')) {
-        const hasContent = el.children.length > 0 || el.textContent?.trim();
-        if (hasContent) {
-          const specialKey = '.column-inner:not(:empty) ~ .column-label';
-          if (this.componentStyles[specialKey] && !addedComponentStyles.has(specialKey)) {
-            styles.push(`${specialKey} { ${this.componentStyles[specialKey].trim()} }`);
-            addedComponentStyles.add(specialKey);
-          }
-        }
-      }
-
-      // 子要素も再帰的に処理
-      Array.from(el.children).forEach((child) => {
-        collectStyles(child as HTMLElement);
-      });
-    };
-
-    collectStyles(container);
-    return styles.join('\n');
+    return exportStylesFrom(container, COMPONENT_STYLES);
   }
 
+  // kept for compatibility if used elsewhere; delegate to export helper logic via exportStylesFrom
   private getElementSelector(el: HTMLElement): string {
-    const id = el.id;
-    if (id) return `#${id}`;
-
-    const classes = Array.from(el.classList).filter((c) => !c.startsWith('dz-'));
-    if (classes.length > 0) {
-      return `.${classes[0]}`;
-    }
-
-    return el.tagName.toLowerCase();
+    return getElementSelectorHelper(el);
   }
 
   // ========== Drag reorder support within zone ===========
   private registerDraggable(ref: ComponentRef<any>): void {
     // Ensure metadata exists for this component
     if (!this.componentMeta.has(ref)) {
-      console.warn('[DynamicZone] registerDraggable without metadata, attaching to root container');
       this.trackComponentRef(ref, this.container);
     }
 
@@ -1034,7 +682,7 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
 
     // Apply inline edit directive cho textual elements AFTER click handler
     // This ensures select() is called first
-    this.applyInlineEditDirective(el);
+    applyInlineEdit(el, (n) => this.inlineEditService.applyToElement(n));
 
     const dragStart = (e: DragEvent) => {
       e.stopPropagation();
@@ -1047,6 +695,14 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
       e.dataTransfer?.setDragImage?.(new Image(), 0, 0);
       el.classList.add('dragging');
       this.draggingRef = ref;
+
+      // Notify drag-drop manager
+      const componentId = this.componentRefs.get(ref);
+      this.dragDropManager.startDrag({
+        componentId,
+        sourceContainerId: containerId,
+        sourceIndex: index,
+      });
     };
 
     const dragOver = (e: DragEvent) => {
@@ -1104,6 +760,17 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
           innerEl,
           insertIndex
         );
+
+        // Publish drag-over for inner container using the actual ViewContainerRef
+        const childContainerVcr = (ref.instance as any)?.getChildContainer?.();
+        const overId = childContainerVcr
+          ? this.ensureContainerRegistered(childContainerVcr)
+          : this.componentMeta.get(ref)?.containerId ?? 'root';
+        this.dragDropManager.updateOver({
+          overContainerId: overId,
+          insertIndex,
+          rect: { left: innerRect.left, top: innerRect.top + indicatorY, width: innerRect.width },
+        });
       }
     };
 
@@ -1117,6 +784,7 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
         const relatedTarget = e.relatedTarget as HTMLElement;
         if (!relatedTarget || !el.contains(relatedTarget)) {
           this.dropIndicator.hide();
+          this.dragDropManager.clearOver();
         }
       }
     };
@@ -1132,208 +800,98 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
         innerEl.classList.remove('drag-over');
       }
 
+      const dropContext = captureRootDropContext({
+        dragDropManager: this.dragDropManager,
+        dropIndicator: this.dropIndicator,
+        getContainerById: (id) => this.getContainerById(id),
+        fallbackContainer: this.container,
+      });
+      const { dropState, indicatorState, overContainerId, targetContainer } = dropContext;
+
       // Hide drop indicator
       this.dropIndicator.hide();
+      this.dragDropManager.clearOver();
 
       const targetMeta = this.componentMeta.get(ref);
-      const targetContainer = targetMeta?.container ?? this.container;
       const targetContainerId = targetMeta?.containerId ?? 'root';
       const childContainer =
         typeof (ref.instance as any)?.getChildContainer === 'function'
           ? (ref.instance as any).getChildContainer()
           : null;
-      const indicatorState = this.dropIndicator.getIndicator();
 
-      const fromStr = e.dataTransfer?.getData('text/dz-index');
-      // Internal reorder within DZ
-      if (fromStr) {
-        const from = parseInt(fromStr, 10);
-        const sourceContainerId = e.dataTransfer?.getData('text/dz-container') || targetContainerId;
-        const sourceContainer = this.getContainerById(sourceContainerId) ?? targetContainer;
-        const dropTargetEl = e.target as HTMLElement;
-        const isDroppingIntoChild =
-          !!childContainer &&
-          !!innerEl &&
-          (dropTargetEl === innerEl || innerEl.contains(dropTargetEl));
-
-        const destinationContainer =
-          isDroppingIntoChild && childContainer ? childContainer : targetContainer;
-        const destinationContainerId =
-          isDroppingIntoChild && childContainer
-            ? this.ensureContainerRegistered(childContainer)
-            : targetContainerId;
-
-        const destinationIndex =
-          isDroppingIntoChild && childContainer
-            ? Math.max(
-                0,
-                indicatorState.insertIndex ?? this.getContainerRefs(childContainer, false).length
-              )
-            : this.indexOfRef(ref);
-
-        if (sourceContainer === destinationContainer) {
-          this.reorderWithinContainer(destinationContainer, from, destinationIndex);
-
-          const parentId =
-            isDroppingIntoChild && childContainer
-              ? this.componentRefs.get(ref) ??
-                targetMeta?.parentId ??
-                this.componentModelService.getRootComponent()?.getId()
-              : targetMeta?.parentId ?? this.componentModelService.getRootComponent()?.getId();
-          if (parentId) {
-            this.componentModelService.reorderChild(parentId, from, destinationIndex);
-          }
-        } else {
-          // Moving between containers -> handled in update-drop-move step
-          const parentId =
-            isDroppingIntoChild && childContainer
-              ? this.componentRefs.get(ref) || undefined
-              : e.dataTransfer?.getData('text/dz-parent') || targetMeta?.parentId;
-          this.handleCrossContainerMove({
-            fromIndex: from,
-            toIndex: destinationIndex,
-            fromContainer: sourceContainer,
-            toContainer: destinationContainer,
-            sourceContainerId,
-            targetContainerId: destinationContainerId,
-            sourceParentId: parentId || undefined,
-            targetParentId:
-              isDroppingIntoChild && childContainer
-                ? this.componentRefs.get(ref) || undefined
-                : targetMeta?.parentId,
-          });
-        }
+      const handled = handleInternalDrop(
+        indicatorState.insertIndex ?? null,
+        {
+          deps: {
+            dragDropManager: this.dragDropManager,
+            dropIndicator: this.dropIndicator,
+            getContainerById: (id) => this.getContainerById(id),
+            fallbackContainer: this.container,
+          },
+          componentRefs: this.componentRefs,
+          getContainerRefs: (container, create) => this.getContainerRefs(container, create),
+          indexOfRef: (ref) => this.indexOfRef(ref),
+          componentModelService: this.componentModelService,
+          ensureContainerRegistered: (container) => this.ensureContainerRegistered(container),
+          handleCrossContainerMove: (args) => this.handleCrossContainerMove(args),
+          reorderWithinContainer: (container, from, to) =>
+            this.reorderWithinContainer(container, from, to),
+        },
+        ref,
+        e,
+        childContainer,
+        innerEl,
+        targetMeta,
+        targetContainerId,
+        targetContainer
+      );
+      if (handled) {
         el.classList.remove('dragging');
+        this.dragDropManager.endDrag();
         return;
       }
 
       // External add (from toolbox Blocks)
-      const json = e.dataTransfer?.getData('application/json');
-      const key = e.dataTransfer?.getData('text/plain');
       const parentId = this.componentRefs.get(ref);
+
       const containerVcr =
         typeof (ref.instance as any)?.getChildContainer === 'function'
           ? (ref.instance as any).getChildContainer()
           : null;
-      const useVcr = containerVcr || this.getViewContainerRef();
-      if (!useVcr) {
-        console.warn('[DynamicZone.drop] No ViewContainerRef available for drop');
+
+      if (!containerVcr || targetContainer !== containerVcr) {
+        this.dragDropManager.endDrag();
         return;
       }
 
-      console.log(
-        '[DynamicZone.drop] Dropping into container, parentId:',
-        parentId,
-        'useVcr:',
-        useVcr
+      const extPayload = this.dragDropManager.parseExternalPayload(e.dataTransfer);
+      const handledExternal = handleExternalDrop(
+        {
+          parentId,
+          useVcr: containerVcr,
+          componentRefs: this.componentRefs,
+          getContainerRefs: (container, create) => this.getContainerRefs(container, create),
+          trackComponentRef: (componentRef, container, options) =>
+            this.trackComponentRef(componentRef, container, options),
+          registerDraggable: (componentRef) => this.registerDraggable(componentRef),
+          componentModelService: this.componentModelService,
+          parser: this.parser,
+          dragDropManager: this.dragDropManager,
+          registry: this.registry,
+          componentDefinitions: this.componentDefinitions,
+          setContainerRef: (container) => this.setContainerRef(container),
+          createWidget: (component, options) => this.createWidget(component, options),
+          insertWidget: (component, index) => this.insertWidget(component, index),
+          createNestedComponents: (parentRef, defs) => this.createNestedComponents(parentRef, defs),
+          add: (key, options) => this.add(key, options),
+        },
+        extPayload,
+        indicatorState,
+        (key) => resolveBlockHtmlHelper(key)
       );
 
-      // Get insert index from drop indicator
-      const indicator = this.dropIndicator.getIndicator();
-      const insertIndex = indicator.insertIndex ?? undefined;
-
-      // JSON payload with HTML (Blocks)
-      if (json) {
-        try {
-          const data = JSON.parse(json) as { content?: string };
-          const html = data?.content || '';
-          if (html) {
-            this.setContainerRef(useVcr);
-            let r: ComponentRef<any> | undefined;
-            if (insertIndex !== undefined) {
-              r = this.insertWidget(HtmlBlock, insertIndex) as ComponentRef<any>;
-            } else {
-              r = this.createWidget(HtmlBlock, { append: true });
-            }
-            if (r && (r.instance as any)) {
-              (r.instance as any).html = html;
-              (r.changeDetectorRef as any)?.detectChanges?.();
-            }
-            // reflect to model under parent
-            let targetParent = parentId ? this.componentModelService.getComponent(parentId) : null;
-            if (!targetParent) {
-              targetParent = this.componentModelService.getRootComponent();
-            }
-            if (targetParent) {
-              const def =
-                this.parser.parseHtml(html) ||
-                ({ tagName: 'div', content: html } as ComponentDefinition);
-              const created = this.componentModelService.createComponent(def, targetParent.getId());
-
-              if (r) {
-                const containerRefs = this.getContainerRefs(useVcr);
-                const position =
-                  insertIndex !== undefined && insertIndex >= 0
-                    ? insertIndex
-                    : containerRefs.length;
-                this.trackComponentRef(r, useVcr, {
-                  parentId: targetParent.getId(),
-                  componentId: created.getId(),
-                  insertIndex: position,
-                });
-                this.registerDraggable(r);
-              }
-            } else if (r) {
-              const containerRefs = this.getContainerRefs(useVcr);
-              const position =
-                insertIndex !== undefined && insertIndex >= 0 ? insertIndex : containerRefs.length;
-              this.trackComponentRef(r, useVcr, {
-                parentId: undefined,
-                insertIndex: position,
-              });
-              this.registerDraggable(r);
-            }
-            return;
-          }
-        } catch {}
-      }
-
-      // Text key from toolbox registry
-      if (key) {
-        const cmp = this.registry[key];
-        if (cmp) {
-          this.nextComponent = cmp as Type<any>;
-          this.setContainerRef(useVcr);
-          // create model under parent if definition exists
-          if (this.componentDefinitions && this.componentDefinitions[key]) {
-            let targetParent = parentId ? this.componentModelService.getComponent(parentId) : null;
-            if (!targetParent) targetParent = this.componentModelService.getRootComponent();
-            if (!targetParent) {
-              targetParent = this.componentModelService.setRootComponent({
-                tagName: 'div',
-                attributes: { 'data-zone': 'dynamic-zone' },
-              });
-            }
-            const created = this.componentModelService.createComponent(
-              this.componentDefinitions[key],
-              targetParent.getId()
-            );
-            let childRef: ComponentRef<any> | undefined;
-            if (insertIndex !== undefined) {
-              childRef = this.insertWidget(this.nextComponent, insertIndex) as ComponentRef<any>;
-            } else {
-              childRef = this.createWidget(this.nextComponent, { append: true });
-            }
-            if (childRef) {
-              const containerRefs = this.getContainerRefs(useVcr);
-              const position =
-                insertIndex !== undefined && insertIndex >= 0 ? insertIndex : containerRefs.length;
-              this.trackComponentRef(childRef, useVcr, {
-                parentId: targetParent.getId(),
-                componentId: created.getId(),
-                insertIndex: position,
-              });
-              this.registerDraggable(childRef);
-
-              // Handle nested components from componentDefinitions
-              const definition = this.componentDefinitions[key];
-              if (definition.components && definition.components.length > 0) {
-                this.createNestedComponents(childRef, definition.components);
-              }
-            }
-            return;
-          }
-        }
+      if (!handledExternal) {
+        this.dragDropManager.endDrag();
       }
     };
 
@@ -1491,338 +1049,7 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
   }
 
   private select(ref: ComponentRef<any>): void {
-    const prevEl = (this.selected?.location?.nativeElement || null) as HTMLElement | null;
-    if (prevEl) prevEl.classList.remove('dz-selected');
-    this.selected = ref;
-    const el = (ref.location?.nativeElement || null) as HTMLElement | null;
-    el?.classList.add('dz-selected');
-    const id = this.componentRefs.get(ref);
-    this.selection.select(id);
-
-    // Log DOM position information
-    if (el) {
-      this.logDOMPosition(el);
-    }
-
-    // Show floating toolbar
-    if (el) {
-      this.selectedElement = el;
-      console.log('Showing toolbar for element:', el, el.tagName);
-      this.showToolbar(el, ref);
-    } else {
-      this.hideToolbar();
-    }
-
-    // Update Trait Manager target & traits
-    if (el) {
-      // For Row/Column components, always select the component itself, not inner textual elements
-      const isLayoutComponent =
-        el.classList.contains('dz-row') ||
-        el.classList.contains('dz-column') ||
-        el.getAttribute('data-widget') === 'row' ||
-        el.getAttribute('data-widget') === 'column' ||
-        el.tagName?.toLowerCase() === 'app-row' ||
-        el.tagName?.toLowerCase() === 'app-column';
-
-      let targetEl = el;
-      if (!isLayoutComponent) {
-        // For non-layout components, prefer inner textual element for text editing
-        const innerTextual = el.querySelector(
-          'h1, h2, h3, h4, h5, h6, p, .dz-heading, .dz-text'
-        ) as HTMLElement | null;
-        targetEl = innerTextual || el;
-      }
-      this.traitManager.clear();
-      this.traitManager.select(targetEl);
-
-      // Common traits
-      this.traitManager.addTrait({
-        name: 'id',
-        label: 'ID',
-        type: 'text',
-        value: targetEl.id || '',
-      });
-      this.traitManager.addTrait({
-        name: 'class',
-        label: 'Class',
-        type: 'text',
-        value: targetEl.className || '',
-      });
-      // Common size traits
-      this.traitManager.addTrait({
-        name: 'width',
-        label: 'Width',
-        type: 'text',
-        value: (targetEl as HTMLElement).style.width || '',
-      });
-      this.traitManager.addTrait({
-        name: 'height',
-        label: 'Height',
-        type: 'text',
-        value: (targetEl as HTMLElement).style.height || '',
-      });
-
-      // Column-specific
-      if (
-        targetEl.classList.contains('dz-column') ||
-        targetEl.getAttribute('data-widget') === 'column'
-      ) {
-        this.traitManager.addTrait({
-          name: 'padding',
-          label: 'Padding',
-          type: 'text',
-          value: (targetEl as HTMLElement).style.padding || '',
-        });
-      }
-
-      // Row-specific (layout controls similar to screenshot)
-      // Check for app-row tag or dz-row class or data-widget attribute
-      const isRowComponent =
-        targetEl.tagName?.toLowerCase() === 'app-row' ||
-        targetEl.classList.contains('dz-row') ||
-        targetEl.getAttribute('data-widget') === 'row';
-
-      if (isRowComponent) {
-        // Find container div (.row.dz-row or .column.dz-column)
-        let containerDiv: HTMLElement | null = null;
-        if (targetEl.tagName?.toLowerCase() === 'app-row') {
-          containerDiv = targetEl.querySelector(
-            '.row.dz-row, .column.dz-column, .dz-row, .dz-column'
-          ) as HTMLElement | null;
-        } else if (
-          targetEl.classList.contains('row') ||
-          targetEl.classList.contains('dz-row') ||
-          targetEl.classList.contains('column') ||
-          targetEl.classList.contains('dz-column')
-        ) {
-          containerDiv = targetEl;
-        }
-
-        // Determine current flexDirection from class instead of style
-        let currentFlexDirection = 'row';
-        if (containerDiv) {
-          // If has column class, direction is column
-          if (
-            containerDiv.classList.contains('column') ||
-            containerDiv.classList.contains('dz-column')
-          ) {
-            currentFlexDirection = 'column';
-          } else {
-            // Default to row
-            currentFlexDirection = 'row';
-          }
-        } else {
-          // Fallback: try to read from inner element style
-          const inner = targetEl.querySelector('.row-inner, .column-inner') as HTMLElement | null;
-          if (inner) {
-            currentFlexDirection = inner.style.flexDirection || 'row';
-          }
-        }
-
-        this.traitManager.addTrait({
-          name: 'flexDirection',
-          label: '方向',
-          type: 'select',
-          value: currentFlexDirection,
-          options: [
-            { value: 'row', label: '横向' },
-            { value: 'column', label: '纵向' },
-          ],
-        });
-        this.traitManager.addTrait({
-          name: 'justifyContent',
-          label: 'Justify',
-          type: 'select',
-          value: (targetEl as HTMLElement).style.justifyContent || 'flex-start',
-          options: [
-            { value: 'flex-start', label: 'Start' },
-            { value: 'center', label: 'Center' },
-            { value: 'flex-end', label: 'End' },
-            { value: 'space-between', label: 'Space Between' },
-            { value: 'space-around', label: 'Space Around' },
-            { value: 'space-evenly', label: 'Space Evenly' },
-          ],
-        });
-        this.traitManager.addTrait({
-          name: 'alignItems',
-          label: 'Align',
-          type: 'select',
-          value: (targetEl as HTMLElement).style.alignItems || 'stretch',
-          options: [
-            { value: 'stretch', label: 'Stretch' },
-            { value: 'flex-start', label: 'Start' },
-            { value: 'center', label: 'Center' },
-            { value: 'flex-end', label: 'End' },
-          ],
-        });
-        this.traitManager.addTrait({
-          name: 'gap',
-          label: 'Gap',
-          type: 'text',
-          value: (targetEl as HTMLElement).style.gap || '',
-        });
-        this.traitManager.addTrait({
-          name: 'flexWrap',
-          label: 'Flex Wrap',
-          type: 'select',
-          value: (targetEl as HTMLElement).style.flexWrap || 'nowrap',
-          options: [
-            { value: 'nowrap', label: 'No Wrap' },
-            { value: 'wrap', label: 'Wrap' },
-            { value: 'wrap-reverse', label: 'Wrap Reverse' },
-          ],
-        });
-      }
-
-      // Text/Heading specific traits
-      const tag = targetEl.tagName.toLowerCase();
-      const isTextual = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div'].includes(tag);
-      if (isTextual) {
-        this.traitManager.addTrait({
-          name: 'textContent',
-          label: 'Text',
-          type: 'text',
-          value: targetEl.textContent || '',
-        });
-
-        this.traitManager.addTrait({
-          name: 'fontSizeClass',
-          label: 'Font Size',
-          type: 'select',
-          value: '',
-          options: [
-            { value: '', label: 'Default' },
-            { value: 'text-sm', label: 'text-sm' },
-            { value: 'text-lg', label: 'text-lg' },
-            { value: 'text-xl', label: 'text-xl' },
-            { value: 'text-2xl', label: 'text-2xl' },
-            { value: 'text-[20px]', label: 'text-[20px]' },
-          ],
-        });
-
-        this.traitManager.addTrait({
-          name: 'fontFamilyClass',
-          label: 'Font Family',
-          type: 'select',
-          value: '',
-          options: [
-            { value: '', label: 'Default' },
-            { value: 'font-sans', label: 'font-sans' },
-            { value: 'font-serif', label: 'font-serif' },
-            { value: 'font-mono', label: 'font-mono' },
-          ],
-        });
-
-        this.traitManager.addTrait({
-          name: 'fontWeightClass',
-          label: 'Font Weight',
-          type: 'select',
-          value: '',
-          options: [
-            { value: '', label: 'Default' },
-            { value: 'font-light', label: 'font-light' },
-            { value: 'font-normal', label: 'font-normal' },
-            { value: 'font-medium', label: 'font-medium' },
-            { value: 'font-bold', label: 'font-bold' },
-            { value: 'font-black', label: 'font-black' },
-          ],
-        });
-
-        this.traitManager.addTrait({
-          name: 'textColorClass',
-          label: 'Text Color',
-          type: 'text',
-          value: '',
-        });
-
-        this.traitManager.addTrait({
-          name: 'bgColorClass',
-          label: 'Background',
-          type: 'text',
-          value: '',
-        });
-
-        this.traitManager.addTrait({
-          name: 'lineHeightClass',
-          label: 'Line Height',
-          type: 'select',
-          value: '',
-          options: [
-            { value: '', label: 'Default' },
-            { value: 'leading-tight', label: 'leading-tight' },
-            { value: 'leading-normal', label: 'leading-normal' },
-            { value: 'leading-loose', label: 'leading-loose' },
-            { value: 'leading-[1.8]', label: 'leading-[1.8]' },
-          ],
-        });
-
-        this.traitManager.addTrait({
-          name: 'letterSpacingClass',
-          label: 'Letter Spacing',
-          type: 'select',
-          value: '',
-          options: [
-            { value: '', label: 'Default' },
-            { value: 'tracking-tight', label: 'tracking-tight' },
-            { value: 'tracking-wider', label: 'tracking-wider' },
-            { value: 'tracking-[0.1em]', label: 'tracking-[0.1em]' },
-          ],
-        });
-
-        this.traitManager.addTrait({
-          name: 'textTransformClass',
-          label: 'Transform',
-          type: 'select',
-          value: '',
-          options: [
-            { value: '', label: 'Default' },
-            { value: 'uppercase', label: 'uppercase' },
-            { value: 'lowercase', label: 'lowercase' },
-            { value: 'capitalize', label: 'capitalize' },
-            { value: 'normal-case', label: 'normal-case' },
-          ],
-        });
-
-        this.traitManager.addTrait({
-          name: 'textAlignClass',
-          label: 'Text Align',
-          type: 'select',
-          value: '',
-          options: [
-            { value: '', label: 'Default' },
-            { value: 'text-left', label: 'text-left' },
-            { value: 'text-center', label: 'text-center' },
-            { value: 'text-right', label: 'text-right' },
-            { value: 'text-justify', label: 'text-justify' },
-          ],
-        });
-
-        this.traitManager.addTrait({
-          name: 'textShadow',
-          label: 'Text Shadow (CSS)',
-          type: 'text',
-          value: (targetEl as HTMLElement).style.textShadow || '',
-        });
-      }
-
-      // Debug log selected block info & traits
-      try {
-        const traitSummaries = this.traitManager
-          .getTraits()
-          .map((t) => ({ id: t.getId(), name: t.getName(), value: t.getValue() }));
-        console.log('[DZ.select] selected element:', {
-          tag: targetEl.tagName.toLowerCase(),
-          id: targetEl.id,
-          className: targetEl.className,
-          text: targetEl.textContent,
-          styles: {
-            width: (targetEl as HTMLElement).style.width,
-            height: (targetEl as HTMLElement).style.height,
-          },
-          traits: traitSummaries,
-        });
-      } catch {}
-    }
+    this.selectionController.select(ref);
   }
 
   private calculateInsertIndex(mouseY: number): number {
@@ -1856,725 +1083,50 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
   /**
    * Log DOM position information for debugging
    */
-  private logDOMPosition(element: HTMLElement): void {
-    try {
-      // Get position in parent
-      const parent = element.parentElement;
-      let indexInParent = -1;
-      if (parent) {
-        const siblings = Array.from(parent.children);
-        indexInParent = siblings.indexOf(element);
-      }
-
-      // Get path from root with better formatting
-      const path: string[] = [];
-      let current: HTMLElement | null = element;
-      while (current) {
-        const tag = current.tagName.toLowerCase();
-        const id = current.id ? `#${current.id}` : '';
-        const classes = current.className
-          ? `.${current.className.split(/\s+/).filter(Boolean).join('.')}`
-          : '';
-        path.unshift(`${tag}${id}${classes}`);
-        current = current.parentElement;
-      }
-
-      // Get component model info if available
-      const componentRef = this.selected;
-      const componentId = componentRef ? this.componentRefs.get(componentRef) : undefined;
-      let modelInfo: any = null;
-      if (componentId) {
-        const model = this.componentModelService.getComponent(componentId);
-        if (model) {
-          modelInfo = {
-            id: model.getId(),
-            tagName: model.getTagName(),
-            parent: model.getParent()?.getId() || 'root',
-            children: model.getComponents().map((c: ComponentModel) => c.getId()),
-          };
-        }
-      }
-
-      // Get bounding rect for detailed position info
-      const rect = element.getBoundingClientRect();
-
-      // Format output as a structured object for better readability
-      const positionInfo = {
-        Element: element.tagName.toLowerCase(),
-        ID: element.id || '(none)',
-        Classes: element.className || '(none)',
-        'Index in parent': indexInParent >= 0 ? indexInParent : '(none)',
-        Parent: parent?.tagName.toLowerCase() || '(none)',
-        'Path from root': path.join(' > '),
-        Position: {
-          x: Math.round(rect.x),
-          y: Math.round(rect.y),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        },
-        'Component Model': modelInfo || '(none)',
-      };
-
-      console.group('🔍 [DZ - DOM Position] Selected Element');
-      console.table(positionInfo);
-      console.log('Full Element:', element);
-      console.log('Full Bounding Rect:', rect);
-      if (modelInfo) {
-        console.log('Component Model Details:', modelInfo);
-      }
-      console.groupEnd();
-    } catch (error) {
-      console.error('[DOM Position] Error logging position:', error);
-    }
-  }
+  private logDOMPosition(_element: HTMLElement): void {}
 
   private showToolbar(element: HTMLElement, ref: ComponentRef<any>): void {
-    // Remove existing toolbar FIRST to avoid conflicts
-    this.hideToolbar();
-
-    try {
-      console.log('Creating toolbar component...');
-
-      // Create toolbar component in container
-      const toolbarRef = this.container.createComponent(FloatingToolbarComponent, {
-        injector: this.injector,
-      });
-
-      const label = this.getElementLabel(element);
-      console.log('Toolbar label:', label);
-
-      toolbarRef.instance.label = label;
-      toolbarRef.instance.targetElement = element;
-
-      // Check if can move up (not first element)
-      const elementIndex = this.indexOfRef(ref);
-      toolbarRef.instance.canMoveUp = elementIndex > 0;
-
-      toolbarRef.instance.action.subscribe((action: string) => this.handleToolbarAction(action));
-
-      // Trigger change detection FIRST to ensure component is fully initialized
-      toolbarRef.changeDetectorRef.detectChanges();
-      console.log('Toolbar component initialized');
-
-      // Get native element and hostView AFTER change detection
-      const nativeElement = toolbarRef.location.nativeElement;
-      const hostView = toolbarRef.hostView;
-
-      // Detach from ViewContainerRef BEFORE attaching to appRef
-      const containerIndex = this.container.indexOf(hostView);
-      if (containerIndex >= 0) {
-        this.container.detach(containerIndex);
-        console.log('Toolbar detached from container at index:', containerIndex);
-      }
-
-      // Attach to ApplicationRef to keep it alive
-      // Use try-catch to handle case where view is already attached
-      try {
-        this.appRef.attachView(hostView);
-        console.log('Toolbar attached to appRef');
-      } catch (attachError: any) {
-        // If view is already attached, that's okay - just log and continue
-        if (attachError?.message?.includes('already attached')) {
-          console.warn('View already attached to appRef, continuing...');
-        } else {
-          console.error('Error attaching view to appRef:', attachError);
-          throw attachError;
-        }
-      }
-
-      // Append to body
-      document.body.appendChild(nativeElement);
-      console.log('Toolbar appended to body, native element:', nativeElement);
-
-      // Force apply fixed positioning styles
-      const hostElement = nativeElement as HTMLElement;
-      hostElement.style.position = 'fixed';
-      hostElement.style.zIndex = '10000';
-      hostElement.style.display = 'block';
-      hostElement.style.pointerEvents = 'auto';
-
-      console.log('Toolbar element styles after force:', {
-        display: window.getComputedStyle(hostElement).display,
-        position: window.getComputedStyle(hostElement).position,
-        visibility: window.getComputedStyle(hostElement).visibility,
-        zIndex: window.getComputedStyle(hostElement).zIndex,
-      });
-
-      // Trigger change detection again after appending to body
-      toolbarRef.changeDetectorRef.detectChanges();
-
-      this.toolbarRef = toolbarRef;
-
-      // Create heading toolbar if element is text or heading
-      if (this.isTextOrHeadingElement(element)) {
-        this.showHeadingToolbar(element);
-      }
-
-      // Update position immediately after appending
-      if (toolbarRef.instance && toolbarRef.instance.updatePosition) {
-        toolbarRef.instance.updatePosition();
-        toolbarRef.changeDetectorRef.detectChanges();
-        console.log(
-          'Toolbar position updated immediately:',
-          'right:',
-          toolbarRef.instance.right,
-          'top:',
-          toolbarRef.instance.top
-        );
-      }
-
-      // Update position again after a short delay to ensure DOM is fully ready
-      setTimeout(() => {
-        if (toolbarRef.instance && toolbarRef.instance.updatePosition) {
-          toolbarRef.instance.updatePosition();
-          toolbarRef.changeDetectorRef.detectChanges();
-          console.log(
-            'Toolbar position updated (delayed):',
-            'right:',
-            toolbarRef.instance.right,
-            'top:',
-            toolbarRef.instance.top
-          );
-        }
-      }, 100);
-
-      // Add click outside handler to hide toolbar and deselect
-      this.clickOutsideHandler = (e: MouseEvent) => {
-        const target = e.target as HTMLElement;
-        const toolbarElement = toolbarRef.location.nativeElement;
-        const headingToolbarElement = this.headingToolbarRef
-          ? this.headingToolbarRef.location.nativeElement
-          : null;
-
-        // Don't hide if clicking on toolbar
-        if (toolbarElement && toolbarElement.contains(target)) {
-          return;
-        }
-
-        // Don't hide if clicking on heading toolbar
-        if (headingToolbarElement && headingToolbarElement.contains(target)) {
-          return;
-        }
-
-        // Don't hide if clicking on selected element or its children
-        if (this.selectedElement && this.selectedElement.contains(target)) {
-          return;
-        }
-
-        // Don't hide if clicking on interactive elements (inputs, buttons, etc.)
-        if (
-          target.tagName === 'INPUT' ||
-          target.tagName === 'BUTTON' ||
-          target.tagName === 'SELECT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.closest('input, button, select, textarea')
-        ) {
-          return;
-        }
-
-        // Hide toolbar and deselect
-        console.log('[DZ] Click outside detected, deselecting...');
-        this.deselect();
-      };
-
-      // Add listener with a small delay to avoid immediate trigger
-      setTimeout(() => {
-        if (this.clickOutsideHandler) {
-          document.addEventListener('click', this.clickOutsideHandler, true);
-          console.log('[DZ] Click outside handler added');
-        }
-      }, 200);
-    } catch (error) {
-      console.error('Error showing toolbar:', error);
-    }
+    this.selectionController.showToolbar(element, ref);
   }
 
   /**
    * Deselect current element and hide toolbar
    */
   private deselect(): void {
-    // Remove selection class
-    if (this.selected) {
-      const el = (this.selected.location?.nativeElement || null) as HTMLElement | null;
-      if (el) {
-        el.classList.remove('dz-selected');
-        console.log('[DZ] Removed dz-selected class from element:', el);
-      }
-      this.selected = undefined;
-    }
-    this.selectedElement = undefined;
-
-    // Hide toolbar
-    this.hideToolbar();
-
-    // Clear trait manager
-    this.traitManager.clear();
+    this.selectionController.deselect();
   }
 
   private hideToolbar(): void {
-    if (this.toolbarRef) {
-      // Remove click outside handler
-      if (this.clickOutsideHandler) {
-        document.removeEventListener('click', this.clickOutsideHandler, true);
-        console.log('[DZ] Click outside handler removed');
-        this.clickOutsideHandler = undefined;
-      }
-
-      try {
-        // Detach from ApplicationRef first
-        const hostView = this.toolbarRef.hostView;
-        if (hostView) {
-          this.appRef.detachView(hostView);
-          console.log('Toolbar detached from appRef');
-        }
-
-        // Remove from DOM
-        const nativeElement = this.toolbarRef.location.nativeElement;
-        if (nativeElement && nativeElement.parentNode) {
-          nativeElement.parentNode.removeChild(nativeElement);
-          console.log('Toolbar removed from DOM');
-        }
-
-        // Destroy component
-        this.toolbarRef.destroy();
-        console.log('Toolbar destroyed');
-      } catch (error) {
-        console.error('Error hiding toolbar:', error);
-      } finally {
-        this.toolbarRef = undefined;
-      }
-    }
-
-    // Hide heading toolbar if exists
-    if (this.headingToolbarRef) {
-      try {
-        // Detach from ApplicationRef first
-        const headingHostView = this.headingToolbarRef.hostView;
-        if (headingHostView) {
-          this.appRef.detachView(headingHostView);
-          console.log('Heading toolbar detached from appRef');
-        }
-
-        // Remove from DOM
-        const headingNativeElement = this.headingToolbarRef.location.nativeElement;
-        if (headingNativeElement && headingNativeElement.parentNode) {
-          headingNativeElement.parentNode.removeChild(headingNativeElement);
-          console.log('Heading toolbar removed from DOM');
-        }
-
-        // Destroy component
-        this.headingToolbarRef.destroy();
-        console.log('Heading toolbar destroyed');
-      } catch (error) {
-        console.error('Error hiding heading toolbar:', error);
-      } finally {
-        this.headingToolbarRef = undefined;
-      }
-    }
+    this.selectionController.hideToolbar();
   }
 
   private showHeadingToolbar(element: HTMLElement): void {
-    // Hide existing heading toolbar first
-    if (this.headingToolbarRef) {
-      try {
-        const headingHostView = this.headingToolbarRef.hostView;
-        if (headingHostView) {
-          this.appRef.detachView(headingHostView);
-        }
-        const headingNativeElement = this.headingToolbarRef.location.nativeElement;
-        if (headingNativeElement && headingNativeElement.parentNode) {
-          headingNativeElement.parentNode.removeChild(headingNativeElement);
-        }
-        this.headingToolbarRef.destroy();
-      } catch (error) {
-        console.error('Error hiding existing heading toolbar:', error);
-      } finally {
-        this.headingToolbarRef = undefined;
-      }
-    }
-
-    try {
-      console.log('Creating heading toolbar component...');
-
-      // Create heading toolbar component in container
-      const headingToolbarRef = this.container.createComponent(FloatingToolbarHeadingComponent, {
-        injector: this.injector,
-      });
-
-      headingToolbarRef.instance.targetElement = element;
-
-      // Subscribe to action events
-      headingToolbarRef.instance.action.subscribe((action: string) =>
-        this.handleHeadingToolbarAction(action)
-      );
-
-      // Trigger change detection FIRST to ensure component is fully initialized
-      headingToolbarRef.changeDetectorRef.detectChanges();
-      console.log('Heading toolbar component initialized');
-
-      // Get native element and hostView AFTER change detection
-      const headingNativeElement = headingToolbarRef.location.nativeElement;
-      const headingHostView = headingToolbarRef.hostView;
-
-      // Detach from ViewContainerRef BEFORE attaching to appRef
-      const headingContainerIndex = this.container.indexOf(headingHostView);
-      if (headingContainerIndex >= 0) {
-        this.container.detach(headingContainerIndex);
-        console.log('Heading toolbar detached from container at index:', headingContainerIndex);
-      }
-
-      // Attach to ApplicationRef to keep it alive
-      try {
-        this.appRef.attachView(headingHostView);
-        console.log('Heading toolbar attached to appRef');
-      } catch (attachError: any) {
-        if (attachError?.message?.includes('already attached')) {
-          console.warn('Heading toolbar view already attached to appRef, continuing...');
-        } else {
-          console.error('Error attaching heading toolbar view to appRef:', attachError);
-          throw attachError;
-        }
-      }
-
-      // Append to body
-      document.body.appendChild(headingNativeElement);
-      console.log('Heading toolbar appended to body, native element:', headingNativeElement);
-
-      // Force apply fixed positioning styles
-      const headingHostElement = headingNativeElement as HTMLElement;
-      headingHostElement.style.position = 'fixed';
-      headingHostElement.style.zIndex = '10000';
-      headingHostElement.style.display = 'block';
-      headingHostElement.style.pointerEvents = 'auto';
-
-      // Trigger change detection again after appending to body
-      headingToolbarRef.changeDetectorRef.detectChanges();
-
-      this.headingToolbarRef = headingToolbarRef;
-
-      // Update position immediately after appending
-      if (headingToolbarRef.instance && headingToolbarRef.instance.updatePosition) {
-        headingToolbarRef.instance.updatePosition();
-        headingToolbarRef.changeDetectorRef.detectChanges();
-        console.log(
-          'Heading toolbar position updated immediately:',
-          'left:',
-          headingToolbarRef.instance.left,
-          'top:',
-          headingToolbarRef.instance.top
-        );
-      }
-
-      // Update position again after a short delay
-      setTimeout(() => {
-        if (headingToolbarRef.instance && headingToolbarRef.instance.updatePosition) {
-          headingToolbarRef.instance.updatePosition();
-          headingToolbarRef.changeDetectorRef.detectChanges();
-          console.log(
-            'Heading toolbar position updated (delayed):',
-            'left:',
-            headingToolbarRef.instance.left,
-            'top:',
-            headingToolbarRef.instance.top
-          );
-        }
-      }, 100);
-    } catch (headingError) {
-      console.error('Error showing heading toolbar:', headingError);
-    }
+    this.selectionController.showHeadingToolbar(element);
   }
 
   private handleHeadingToolbarAction(action: string): void {
-    // Handle text formatting actions (bold, italic, underline, strikeThrough)
-    // The actual formatting is already applied in FloatingToolbarHeadingComponent
-    // This method can be used for additional logic if needed
-    console.log('Heading toolbar action:', action);
-
-    // Update the component model if needed
-    if (this.selected && this.selectedElement) {
-      const id = this.componentRefs.get(this.selected);
-      if (id) {
-        // The formatting is already applied to the DOM
-        // We might want to update the model here if needed
-        const model = this.componentModelService.getComponent(id);
-        if (model) {
-          // Update textContent to reflect the formatted HTML
-          const htmlContent = this.selectedElement.innerHTML;
-          // You can update the model here if needed
-        }
-      }
-    }
-  }
-
-  private getElementLabel(element: HTMLElement): string {
-    const tag = element.tagName.toLowerCase();
-
-    // Check for inner textual element first
-    const innerTextual = element.querySelector('h1, h2, h3, h4, h5, h6, p');
-    if (innerTextual) {
-      const innerTag = innerTextual.tagName.toLowerCase();
-      if (innerTag.startsWith('h')) {
-        const level = innerTag.charAt(1);
-        return `H${level} Heading`;
-      }
-      if (innerTag === 'p') {
-        return 'P Paragraph';
-      }
-    }
-
-    // Check element itself
-    if (tag.startsWith('h')) {
-      const level = tag.charAt(1);
-      return `H${level} Heading`;
-    }
-
-    // Check for common component classes
-    if (element.classList.contains('dz-row')) {
-      return 'Row';
-    }
-    if (element.classList.contains('dz-column')) {
-      return 'Column';
-    }
-    if (element.classList.contains('dz-section')) {
-      return 'Section';
-    }
-
-    // Default: capitalize tag name
-    return tag.charAt(0).toUpperCase() + tag.slice(1);
-  }
-
-  private isTextOrHeadingElement(element: HTMLElement): boolean {
-    const tag = element.tagName.toLowerCase();
-
-    // Check if element itself is a heading or paragraph
-    if (tag.startsWith('h') && tag.length === 2 && /^[1-6]$/.test(tag.charAt(1))) {
-      return true; // h1-h6
-    }
-    if (tag === 'p') {
-      return true; // paragraph
-    }
-
-    // Check for text/heading classes
-    if (element.classList.contains('dz-heading') || element.classList.contains('dz-text')) {
-      return true;
-    }
-
-    // Check for inner textual elements
-    const innerTextual = element.querySelector('h1, h2, h3, h4, h5, h6, p, .dz-heading, .dz-text');
-    if (innerTextual) {
-      return true;
-    }
-
-    return false;
+    this.selectionController.handleHeadingToolbarAction(action);
   }
 
   private handleToolbarAction(action: string): void {
-    if (!this.selected || !this.selectedElement) return;
-
-    switch (action) {
-      case 'ai':
-        // Show heading toolbar when AI button is clicked
-        if (this.isTextOrHeadingElement(this.selectedElement)) {
-          this.showHeadingToolbar(this.selectedElement);
-        }
-        break;
-      case 'moveUp':
-        this.moveUp();
-        // Update canMoveUp after move
-        setTimeout(() => {
-          if (this.toolbarRef && this.selected) {
-            const newIndex = this.indexOfRef(this.selected);
-            this.toolbarRef.instance.canMoveUp = newIndex > 0;
-            this.toolbarRef.changeDetectorRef.detectChanges();
-          }
-        }, 0);
-        break;
-      case 'move':
-        this.enableDragMode();
-        break;
-      case 'duplicate':
-        const duplicatedRef = this.duplicate();
-        // Select the duplicated element after a short delay to ensure it's fully rendered
-        if (duplicatedRef) {
-          setTimeout(() => {
-            console.log('[DZ] Selecting duplicated element:', duplicatedRef);
-            this.select(duplicatedRef);
-          }, 50);
-        }
-        break;
-      case 'delete':
-        this.delete();
-        break;
-    }
+    this.selectionController.handleToolbarAction(action);
   }
 
   private moveUp(): void {
-    if (!this.selected) return;
-    const meta = this.componentMeta.get(this.selected);
-    if (!meta) return;
-    const index = this.indexOfRef(this.selected);
-    if (index > 0) {
-      // Get parent ID for undo command
-      const id = this.componentRefs.get(this.selected);
-      if (id) {
-        const model = this.componentModelService.getComponent(id);
-        if (model) {
-          const parent = model.getParent();
-          if (parent) {
-            const parentId = parent.getId();
-
-            // Create and execute move command with undo support
-            const moveCommand = new MoveCommand(
-              this.componentModelService,
-              parentId,
-              index,
-              index - 1
-            );
-
-            // Execute command and add to undo stack
-            this.undoManager.execute(moveCommand, { label: 'Move Up' });
-
-            // Reorder in view
-            this.reorderWithinContainer(meta.container, index, index - 1);
-          }
-        }
-      }
-    }
+    this.selectionController.moveUp();
   }
 
   private duplicate(): ComponentRef<any> | null {
-    if (!this.selected) return null;
-    const el = (this.selected.location?.nativeElement || null) as HTMLElement | null;
-    if (!el) return null;
-
-    const id = this.componentRefs.get(this.selected);
-    if (!id) return null;
-
-    const model = this.componentModelService.getComponent(id);
-    if (!model) return null;
-
-    const parent = model.getParent();
-    const parentId = parent?.getId() || '';
-    const index = this.indexOfRef(this.selected);
-    const meta = this.componentMeta.get(this.selected);
-    const container = meta?.container ?? this.container;
-
-    // Create and execute duplicate command with undo support
-    const duplicateCommand = new DuplicateCommand(
-      this.componentModelService,
-      id,
-      parentId,
-      index + 1
-    );
-
-    this.undoManager.execute(duplicateCommand, { label: 'Duplicate Component' });
-
-    // Get the cloned component from model
-    const parentModel = this.componentModelService.getComponent(parentId);
-    const cloned = parentModel?.getComponents()[index + 1];
-
-    // Create component instance
-    const componentType = this.registry[model.getTagName()] || this.nextComponent;
-    if (componentType && cloned) {
-      this.setContainerRef(container);
-      const clonedRef = this.insertWidget(componentType, index + 1) as ComponentRef<any>;
-      if (clonedRef) {
-        const containerRefs = this.getContainerRefs(container);
-        const position = Math.min(index + 1, containerRefs.length);
-        this.trackComponentRef(clonedRef, container, {
-          parentId: parentId || undefined,
-          componentId: cloned.getId(),
-          insertIndex: position,
-        });
-        this.registerDraggable(clonedRef);
-        console.log('[DZ] Duplicated element, new ref:', clonedRef);
-        return clonedRef;
-      }
-    }
-    return null;
+    return this.selectionController.duplicate();
   }
 
   private delete(): void {
-    if (!this.selected) return;
-    const id = this.componentRefs.get(this.selected);
-    if (!id) return;
-
-    const model = this.componentModelService.getComponent(id);
-    if (!model) return;
-
-    const parent = model.getParent();
-    const parentId = parent?.getId();
-
-    // Create and execute delete command with undo support
-    const deleteCommand = new DeleteCommand(this.componentModelService, id, parentId);
-
-    this.undoManager.execute(deleteCommand, { label: 'Delete Component' });
-
-    // Remove from view
-    const index = this.indexOfRef(this.selected);
-    const meta = this.componentMeta.get(this.selected);
-    const container = meta?.container ?? this.container;
-    if (container && index >= 0) {
-      container.remove(index);
-      this.componentRefs.delete(this.selected);
-      this.selected.destroy();
-      this.selected = undefined;
-      this.selectedElement = undefined;
-      this.hideToolbar();
-    }
+    this.selectionController.delete();
   }
 
   private enableDragMode(): void {
-    if (!this.selected || !this.selectedElement) return;
-
-    // Element đã có draggable = 'true' từ registerDraggable
-    // Chỉ cần log để user biết có thể kéo thả
-    console.log('Drag mode enabled - bạn có thể kéo thả element này');
-
-    // Có thể thêm visual indicator nếu cần
-    this.selectedElement.style.cursor = 'move';
-
-    // Remove cursor after a delay
-    setTimeout(() => {
-      if (this.selectedElement) {
-        this.selectedElement.style.cursor = '';
-      }
-    }, 2000);
+    this.selectionController.enableDragMode();
   }
 
-  private applyInlineEditDirective(element: HTMLElement): void {
-    // Tìm các textual elements trong component và apply service
-    const textualElements = element.querySelectorAll(
-      'h1, h2, h3, h4, h5, h6, p, span, .dz-heading, .dz-text'
-    ) as NodeListOf<HTMLElement>;
-
-    textualElements.forEach((el) => {
-      this.inlineEditService.applyToElement(el);
-    });
-
-    // Nếu chính element là textual, apply service vào nó
-    const tag = element.tagName.toLowerCase();
-    const isTextual = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div'].includes(tag);
-    if (isTextual) {
-      this.inlineEditService.applyToElement(element);
-    }
-  }
-
-  private resolveBlockHtml(label: string): string | null {
-    const normalized = label.toLowerCase();
-    switch (normalized) {
-      case 'heading':
-        return '<h1>Heading Text</h1>';
-      case 'paragraph':
-        return '<p>Paragraph text here</p>';
-      case 'button':
-        return '<button>Click Me</button>';
-      case 'container':
-        return '<div style="padding:16px;border:1px solid #ddd;">Container</div>';
-      default:
-        // If label contains HTML, use it directly
-        if (normalized.includes('<')) return label;
-        return null;
-    }
-  }
+  // resolveBlockHtml moved to interaction/styles/component-styles.ts
 }

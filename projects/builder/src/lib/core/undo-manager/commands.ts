@@ -1,6 +1,7 @@
 import { Command } from './command.interface';
 import { ComponentModelService } from '../dom-components/component-model.service';
 import { ComponentDefinition } from '../dom-components/model/component.model';
+import { UndoManagerService } from './undo-manager.service';
 
 /**
  * Command for moving a component up/down in the list
@@ -309,3 +310,13 @@ export class CrossContainerMoveCommand implements Command {
     }
   }
 }
+
+/** Cohesive helpers for global undo/redo used by command handlers */
+export function performUndo(undoManager: UndoManagerService): boolean {
+  return undoManager.undo();
+}
+
+export function performRedo(undoManager: UndoManagerService): boolean {
+  return undoManager.redo();
+}
+
