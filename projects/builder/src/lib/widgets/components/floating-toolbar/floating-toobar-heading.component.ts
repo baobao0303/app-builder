@@ -8,8 +8,10 @@ import {
   OnDestroy,
   AfterViewInit,
   ViewEncapsulation,
+  ChangeDetectorRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { UndoManagerService } from '../../../core/undo-manager/undo-manager.service';
 
 @Component({
   selector: 'app-floating-toolbar-heading',
@@ -24,6 +26,23 @@ import { CommonModule } from '@angular/common';
       [style.top.px]="top"
     >
       <div class="floating-toolbar-heading">
+        <button 
+          class="toolbar-btn" 
+          (click)="handleUndo()" 
+          [disabled]="!canUndo"
+          title="Undo (Ctrl+Z)">
+          <i class="pi pi-undo"></i>
+        </button>
+        <button 
+          class="toolbar-btn" 
+          (click)="handleRedo()" 
+          [disabled]="!canRedo"
+          title="Redo (Ctrl+Y)">
+          <i class="pi pi-redo"></i>
+        </button>
+        
+        <div class="toolbar-divider"></div>
+        
         <button class="toolbar-btn" (click)="applyBold()" title="Bold"><strong>B</strong></button>
         <button class="toolbar-btn" (click)="applyItalic()" title="Italic"><em>I</em></button>
         <button class="toolbar-btn" (click)="applyUnderline()" title="Underline"><u>U</u></button>
@@ -83,12 +102,24 @@ import { CommonModule } from '@angular/common';
         transition: background 0.2s;
       }
 
-      .toolbar-btn:hover {
+      .toolbar-btn:hover:not(:disabled) {
         background: rgba(255, 255, 255, 0.1);
+      }
+
+      .toolbar-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
       }
 
       .toolbar-btn i {
         font-size: 15px;
+      }
+
+      .toolbar-divider {
+        width: 1px;
+        height: 20px;
+        background: #3a3a3a;
+        margin: 0 4px;
       }
 
       .toolbar-btn strong,
@@ -148,10 +179,34 @@ export class FloatingToolbarHeadingComponent implements OnInit, OnDestroy, After
 
   left = 0;
   top = 0;
+  canUndo = false;
+  canRedo = false;
   private updatePositionInterval?: number;
+  private undoSubscription?: any;
+  private redoSubscription?: any;
+
+  constructor(
+    private undoManager: UndoManagerService,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   ngOnInit(): void {
     this.updatePosition();
+    
+    // Subscribe to undo/redo state changes
+    this.undoSubscription = this.undoManager.canUndo$.subscribe((canUndo) => {
+      this.canUndo = canUndo;
+      this.cdr.detectChanges();
+    });
+    
+    this.redoSubscription = this.undoManager.canRedo$.subscribe((canRedo) => {
+      this.canRedo = canRedo;
+      this.cdr.detectChanges();
+    });
+    
+    // Initialize state
+    this.canUndo = this.undoManager.canUndo();
+    this.canRedo = this.undoManager.canRedo();
   }
 
   ngAfterViewInit(): void {
@@ -164,6 +219,14 @@ export class FloatingToolbarHeadingComponent implements OnInit, OnDestroy, After
   ngOnDestroy(): void {
     if (this.updatePositionInterval) {
       clearInterval(this.updatePositionInterval);
+    }
+    
+    // Unsubscribe from undo/redo state
+    if (this.undoSubscription) {
+      this.undoSubscription.unsubscribe();
+    }
+    if (this.redoSubscription) {
+      this.redoSubscription.unsubscribe();
     }
   }
 
@@ -362,5 +425,19 @@ export class FloatingToolbarHeadingComponent implements OnInit, OnDestroy, After
 
   applyStrikethrough(): void {
     this.applyTextStyle('strikeThrough');
+  }
+
+  handleUndo(): void {
+    if (this.canUndo) {
+      this.undoManager.undo();
+      this.action.emit('undo');
+    }
+  }
+
+  handleRedo(): void {
+    if (this.canRedo) {
+      this.undoManager.redo();
+      this.action.emit('redo');
+    }
   }
 }

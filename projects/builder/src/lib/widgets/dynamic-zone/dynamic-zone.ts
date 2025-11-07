@@ -28,7 +28,12 @@ import { InlineEditService } from '../../core/editor/inline-edit.service';
 import { FloatingToolbarComponent } from '../components/floating-toolbar/floating-toolbar.component';
 import { FloatingToolbarHeadingComponent } from '../components/floating-toolbar/floating-toobar-heading.component';
 import { ComponentRef as AngularComponentRef } from '@angular/core';
-import { UndoManagerService, MoveCommand, DuplicateCommand, DeleteCommand } from '../../core/undo-manager/undo-manager.service';
+import {
+  UndoManagerService,
+  MoveCommand,
+  DuplicateCommand,
+  DeleteCommand,
+} from '../../core/undo-manager/undo-manager.service';
 
 interface ComponentMeta {
   container: ViewContainerRef;
@@ -228,6 +233,50 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
       this.hostEl.nativeElement.addEventListener('click', this.canvasClickHandler, true);
       console.log('[DZ] Canvas click handler added');
     }
+
+    // Add keyboard shortcuts for undo/redo
+    this.setupKeyboardShortcuts();
+  }
+
+  private setupKeyboardShortcuts(): void {
+    const keydownHandler = (e: KeyboardEvent) => {
+      // Check if user is typing in an input field
+      const target = e.target as HTMLElement;
+      const isEditing =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.contentEditable === 'true';
+
+      // Ctrl+Z or Cmd+Z for Undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !isEditing) {
+        e.preventDefault();
+        if (this.undoManager.canUndo()) {
+          this.undoManager.undo();
+          console.log('[DZ] Undo triggered via keyboard');
+        }
+        return;
+      }
+
+      // Ctrl+Y or Cmd+Shift+Z for Redo
+      if (
+        ((e.ctrlKey || e.metaKey) && e.key === 'y') ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z')
+      ) {
+        if (!isEditing) {
+          e.preventDefault();
+          if (this.undoManager.canRedo()) {
+            this.undoManager.redo();
+            console.log('[DZ] Redo triggered via keyboard');
+          }
+        }
+        return;
+      }
+    };
+
+    document.addEventListener('keydown', keydownHandler);
+
+    // Store handler for cleanup
+    (this as any).__keydownHandler = keydownHandler;
   }
 
   ngOnDestroy(): void {
@@ -240,6 +289,14 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
       document.removeEventListener('click', this.clickOutsideHandler, true);
       console.log('[DZ] Click outside handler removed');
     }
+
+    // Remove keyboard shortcut handler
+    const keydownHandler = (this as any).__keydownHandler;
+    if (keydownHandler) {
+      document.removeEventListener('keydown', keydownHandler);
+      console.log('[DZ] Keyboard shortcut handler removed');
+    }
+
     // Hide toolbar and deselect
     this.deselect();
   }
@@ -2365,7 +2422,7 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
           const parent = model.getParent();
           if (parent) {
             const parentId = parent.getId();
-            
+
             // Create and execute move command with undo support
             const moveCommand = new MoveCommand(
               this.componentModelService,
@@ -2373,10 +2430,10 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
               index,
               index - 1
             );
-            
+
             // Execute command and add to undo stack
             this.undoManager.execute(moveCommand, { label: 'Move Up' });
-            
+
             // Reorder in view
             this.reorderWithinContainer(meta.container, index, index - 1);
           }
@@ -2409,7 +2466,7 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
       parentId,
       index + 1
     );
-    
+
     this.undoManager.execute(duplicateCommand, { label: 'Duplicate Component' });
 
     // Get the cloned component from model
@@ -2442,8 +2499,16 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
     const id = this.componentRefs.get(this.selected);
     if (!id) return;
 
-    // Remove from model
-    this.componentModelService.removeComponent(id);
+    const model = this.componentModelService.getComponent(id);
+    if (!model) return;
+
+    const parent = model.getParent();
+    const parentId = parent?.getId();
+
+    // Create and execute delete command with undo support
+    const deleteCommand = new DeleteCommand(this.componentModelService, id, parentId);
+
+    this.undoManager.execute(deleteCommand, { label: 'Delete Component' });
 
     // Remove from view
     const index = this.indexOfRef(this.selected);

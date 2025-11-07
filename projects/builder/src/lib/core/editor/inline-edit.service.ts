@@ -1,5 +1,7 @@
 import { Injectable } from '@angular/core';
 import { TraitManagerService } from '../trait-manager/trait-manager.service';
+import { UndoManagerService, EditTextCommand } from '../undo-manager/undo-manager.service';
+import { ComponentModelService } from '../dom-components/component-model.service';
 
 interface CornerIndicators {
   left: HTMLElement;
@@ -13,7 +15,11 @@ export class InlineEditService {
   private editingElement: HTMLElement | null = null;
   private cornerIndicators = new Map<HTMLElement, CornerIndicators>();
 
-  constructor(private traitManager: TraitManagerService) {}
+  constructor(
+    private traitManager: TraitManagerService,
+    private undoManager: UndoManagerService,
+    private componentModelService: ComponentModelService
+  ) {}
 
   /**
    * Apply inline edit functionality to an element
@@ -173,6 +179,27 @@ export class InlineEditService {
     if (this.editingElement !== element) return;
 
     const newText = element.textContent || '';
+    const originalText = (element as any).__originalText || '';
+    
+    // Only create undo command if text actually changed
+    if (newText !== originalText) {
+      // Try to find component ID from element attributes
+      const componentId = element.getAttribute('data-component-id') || 
+                         element.closest('[data-component-id]')?.getAttribute('data-component-id');
+      
+      if (componentId) {
+        const editCommand = new EditTextCommand(
+          this.componentModelService,
+          componentId,
+          originalText,
+          newText,
+          element
+        );
+        
+        this.undoManager.execute(editCommand, { label: 'Edit Text' });
+      }
+    }
+    
     this.traitManager.updateAttribute('textContent', newText);
 
     this.cleanupEditing(element);
