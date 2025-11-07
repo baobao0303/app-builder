@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ElementRef, ViewChild } from '@angular/core';
 
 @Component({
   selector: 'app-heading',
@@ -13,8 +13,27 @@ import { Component } from '@angular/core';
       .dz-heading {
         color: #111827;
         margin: 0;
+        border: 1px dashed transparent;
+        cursor: text;
+      }
+      .dz-heading:focus {
+        border: 1px dashed #60a5fa;
+      }
+      /* Border xanh khi được select */
+      :host.dz-selected .dz-heading,
+      .dz-heading.dz-selected {
+        border: 2px dashed #4285f4;
+        outline: none;
       }
     `,
   ],
 })
-export class HeadingComponent {}
+export class HeadingComponent {
+  @ViewChild('host', { static: true }) hostEl!: ElementRef<HTMLElement>;
+
+  ngAfterViewInit(): void {
+    this.hostEl.nativeElement.addEventListener('click', () => {
+      this.hostEl.nativeElement.focus();
+    });
+  }
+}

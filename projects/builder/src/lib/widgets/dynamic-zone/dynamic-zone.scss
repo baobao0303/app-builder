@@ -9,19 +9,9 @@
 }
 
 .dz-selected {
-  outline: 2px solid #3b82f6; /* blue-500 */
-  outline-offset: 2px;
-}
-
-.dz-selected::after {
-  content: '';
-  position: absolute;
-  right: -6px;
-  bottom: -6px;
-  width: 8px;
-  height: 8px;
-  background: #3b82f6;
-  border-radius: 2px; /* simple handle marker */
+  outline: 2px solid #4285f4; /* Google blue */
+  outline-offset: 0;
+  position: relative;
 }
 
 :host {

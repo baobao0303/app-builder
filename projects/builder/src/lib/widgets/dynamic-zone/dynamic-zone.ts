@@ -7,6 +7,8 @@ import {
   ElementRef,
   ComponentRef,
   inject,
+  ApplicationRef,
+  Injector,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CoreBase } from '../../core/core.base';
@@ -17,11 +19,14 @@ import { ParserService } from '../../core/parser/parser.service';
 import { SelectionService } from '../../core/editor/selection.service';
 import { TraitManagerService } from '../../core/trait-manager/trait-manager.service';
 import { DropIndicatorService } from '../../core/utils/drop-indicator.service';
+import { InlineEditService } from '../../core/editor/inline-edit.service';
+import { FloatingToolbarComponent } from '../components/floating-toolbar/floating-toolbar.component';
+import { ComponentRef as AngularComponentRef } from '@angular/core';
 
 @Component({
   selector: 'app-dynamic-zone',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FloatingToolbarComponent],
   templateUrl: './dynamic-zone.html',
   styleUrl: './dynamic-zone.scss',
 })
@@ -38,6 +43,9 @@ export class DynamicZone extends CoreBase {
   @ViewChild('host', { static: true })
   private hostEl!: ElementRef<HTMLElement>;
 
+  // Separate ViewContainerRef for toolbar (not attached to template)
+  private toolbarContainer?: ViewContainerRef;
+
   // Component hiện tại sẽ được tạo bởi CoreBase
   private nextComponent?: Type<any>;
 
@@ -45,7 +53,9 @@ export class DynamicZone extends CoreBase {
   private componentRefs = new Map<ComponentRef<any>, string>(); // ComponentRef -> componentId
   private refs: ComponentRef<any>[] = [];
   private selected?: ComponentRef<any>;
-  private editingElement: HTMLElement | null = null; // Element đang được edit
+  private toolbarRef?: AngularComponentRef<FloatingToolbarComponent>;
+  private selectedElement?: HTMLElement;
+  private clickOutsideHandler?: (e: MouseEvent) => void;
 
   // Services quản lý model và parse HTML
   private componentModelService = inject(ComponentModelService);
@@ -53,6 +63,9 @@ export class DynamicZone extends CoreBase {
   private selection = inject(SelectionService);
   private traitManager = inject(TraitManagerService);
   private dropIndicator = inject(DropIndicatorService);
+  private inlineEditService = inject(InlineEditService);
+  private appRef = inject(ApplicationRef);
+  private injector = inject(Injector);
 
   // Trạng thái để hiển thị highlight khi kéo vào vùng thả
   protected isDragOver = false;
@@ -501,8 +514,14 @@ export class DynamicZone extends CoreBase {
 
     const click = (e: Event) => {
       e.stopPropagation();
+      console.log('Element clicked, calling select()', ref);
+      // Select first, then inline edit will be handled separately
       this.select(ref);
     };
+
+    // Apply inline edit directive cho textual elements AFTER click handler
+    // This ensures select() is called first
+    this.applyInlineEditDirective(el);
 
     const dragStart = (e: DragEvent) => {
       e.stopPropagation();
@@ -695,7 +714,8 @@ export class DynamicZone extends CoreBase {
       el.classList.remove('drag-over');
     };
 
-    el.addEventListener('click', click);
+    // Use capture phase to ensure select() runs before inline edit
+    el.addEventListener('click', click, true);
     el.addEventListener('dragstart', dragStart);
     el.addEventListener('dragover', dragOver);
     el.addEventListener('dragleave', dragLeave);
@@ -731,9 +751,6 @@ export class DynamicZone extends CoreBase {
   }
 
   private select(ref: ComponentRef<any>): void {
-    // Disable editing cho element trước đó
-    this.disableEditing();
-
     const prevEl = (this.selected?.location?.nativeElement || null) as HTMLElement | null;
     if (prevEl) prevEl.classList.remove('dz-selected');
     this.selected = ref;
@@ -741,6 +758,15 @@ export class DynamicZone extends CoreBase {
     el?.classList.add('dz-selected');
     const id = this.componentRefs.get(ref);
     this.selection.select(id);
+
+    // Show floating toolbar
+    if (el) {
+      this.selectedElement = el;
+      console.log('Showing toolbar for element:', el, el.tagName);
+      this.showToolbar(el);
+    } else {
+      this.hideToolbar();
+    }
 
     // Update Trait Manager target & traits
     if (el) {
@@ -751,22 +777,6 @@ export class DynamicZone extends CoreBase {
       const targetEl = innerTextual || el;
       this.traitManager.clear();
       this.traitManager.select(targetEl);
-
-      // Enable contenteditable cho textual elements và tự động focus
-      const tag = targetEl.tagName.toLowerCase();
-      const isTextual = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div'].includes(tag);
-      if (isTextual) {
-        this.enableEditing(targetEl);
-        // Tự động focus và select text sau một chút delay để đảm bảo DOM đã render
-        setTimeout(() => {
-          targetEl.focus();
-          const range = document.createRange();
-          range.selectNodeContents(targetEl);
-          const selection = window.getSelection();
-          selection?.removeAllRanges();
-          selection?.addRange(range);
-        }, 100);
-      }
 
       // Common traits
       this.traitManager.addTrait({
@@ -856,7 +866,8 @@ export class DynamicZone extends CoreBase {
       }
 
       // Text/Heading specific traits
-      // tag và isTextual đã được khai báo ở trên (line 756-757)
+      const tag = targetEl.tagName.toLowerCase();
+      const isTextual = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div'].includes(tag);
       if (isTextual) {
         this.traitManager.addTrait({
           name: 'textContent',
@@ -1033,79 +1044,277 @@ export class DynamicZone extends CoreBase {
     return children.length;
   }
 
-  private enableEditing(element: HTMLElement): void {
+  private showToolbar(element: HTMLElement): void {
+    // Remove existing toolbar
+    this.hideToolbar();
+
+    try {
+      console.log('Creating toolbar component...');
+
+      // Create toolbar component in container
+      const toolbarRef = this.container.createComponent(FloatingToolbarComponent);
+      const label = this.getElementLabel(element);
+      console.log('Toolbar label:', label);
+
+      toolbarRef.instance.label = label;
+      toolbarRef.instance.targetElement = element;
+      toolbarRef.instance.action.subscribe((action: string) => this.handleToolbarAction(action));
+
+      // Trigger change detection
+      toolbarRef.changeDetectorRef.detectChanges();
+      console.log('Toolbar component created, native element:', toolbarRef.location.nativeElement);
+
+      // Get the hostView and native element BEFORE detaching
+      const hostView = toolbarRef.hostView;
+      const nativeElement = toolbarRef.location.nativeElement;
+
+      // IMPORTANT: Detach from container FIRST before attaching to appRef
+      // This prevents "already attached" error
+      const index = this.container.indexOf(hostView);
+      console.log('Container index of toolbar:', index);
+
+      if (index >= 0) {
+        // Remove from container's DOM first
+        if (nativeElement.parentNode) {
+          nativeElement.parentNode.removeChild(nativeElement);
+        }
+        // Then detach from ViewContainerRef
+        this.container.detach(index);
+        console.log('Toolbar detached from container at index:', index);
+      } else {
+        console.warn('Toolbar not found in container, may already be detached');
+        // Still try to remove from DOM if it exists
+        if (nativeElement.parentNode) {
+          nativeElement.parentNode.removeChild(nativeElement);
+        }
+      }
+
+      // Now attach to appRef and append to body
+      // Check if already attached to avoid error
+      try {
+        this.appRef.attachView(hostView);
+        console.log('Toolbar attached to appRef');
+      } catch (attachError) {
+        console.warn('View may already be attached, continuing...', attachError);
+      }
+      document.body.appendChild(nativeElement);
+      console.log('Toolbar appended to body');
+
+      this.toolbarRef = toolbarRef;
+
+      // Add click outside handler to hide toolbar
+      this.clickOutsideHandler = (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        const toolbarElement = toolbarRef.location.nativeElement;
+
+        // Don't hide if clicking on toolbar or selected element
+        if (
+          toolbarElement.contains(target) ||
+          (this.selectedElement && this.selectedElement.contains(target))
+        ) {
+          return;
+        }
+
+        // Hide toolbar and deselect
+        this.hideToolbar();
+        if (this.selected) {
+          const el = (this.selected.location?.nativeElement || null) as HTMLElement | null;
+          if (el) {
+            el.classList.remove('dz-selected');
+          }
+          this.selected = undefined;
+          this.selectedElement = undefined;
+        }
+      };
+
+      // Add listener with a small delay to avoid immediate trigger
+      setTimeout(() => {
+        if (this.clickOutsideHandler) {
+          document.addEventListener('click', this.clickOutsideHandler, true);
+        }
+      }, 100);
+
+      // Update position after a short delay to ensure DOM is ready
+      setTimeout(() => {
+        if (toolbarRef.instance && toolbarRef.instance.updatePosition) {
+          toolbarRef.instance.updatePosition();
+          toolbarRef.changeDetectorRef.detectChanges();
+          console.log(
+            'Toolbar position updated:',
+            toolbarRef.instance.left,
+            toolbarRef.instance.top
+          );
+        }
+      }, 50);
+    } catch (error) {
+      console.error('Error showing toolbar:', error);
+    }
+  }
+
+  private hideToolbar(): void {
+    if (this.toolbarRef) {
+      // Remove click outside handler
+      if (this.clickOutsideHandler) {
+        document.removeEventListener('click', this.clickOutsideHandler, true);
+        this.clickOutsideHandler = undefined;
+      }
+
+      // Remove from DOM first
+      if (this.toolbarRef.location.nativeElement.parentNode) {
+        this.toolbarRef.location.nativeElement.parentNode.removeChild(
+          this.toolbarRef.location.nativeElement
+        );
+      }
+      // Destroy component (this will also detach from appRef automatically)
+      this.toolbarRef.destroy();
+      this.toolbarRef = undefined;
+    }
+  }
+
+  private getElementLabel(element: HTMLElement): string {
+    const tag = element.tagName.toLowerCase();
+
+    // Check for inner textual element first
+    const innerTextual = element.querySelector('h1, h2, h3, h4, h5, h6, p');
+    if (innerTextual) {
+      const innerTag = innerTextual.tagName.toLowerCase();
+      if (innerTag.startsWith('h')) {
+        const level = innerTag.charAt(1);
+        return `H${level} Heading`;
+      }
+      if (innerTag === 'p') {
+        return 'P Paragraph';
+      }
+    }
+
+    // Check element itself
+    if (tag.startsWith('h')) {
+      const level = tag.charAt(1);
+      return `H${level} Heading`;
+    }
+
+    // Check for common component classes
+    if (element.classList.contains('dz-row')) {
+      return 'Row';
+    }
+    if (element.classList.contains('dz-column')) {
+      return 'Column';
+    }
+    if (element.classList.contains('dz-section')) {
+      return 'Section';
+    }
+
+    // Default: capitalize tag name
+    return tag.charAt(0).toUpperCase() + tag.slice(1);
+  }
+
+  private handleToolbarAction(action: string): void {
+    if (!this.selected || !this.selectedElement) return;
+
+    switch (action) {
+      case 'magic':
+        // TODO: Implement magic/AI features
+        console.log('Magic action');
+        break;
+      case 'moveUp':
+        this.moveUp();
+        break;
+      case 'move':
+        // TODO: Implement drag to move
+        console.log('Move action');
+        break;
+      case 'duplicate':
+        this.duplicate();
+        break;
+      case 'delete':
+        this.delete();
+        break;
+      case 'more':
+        // TODO: Show more options menu
+        console.log('More action');
+        break;
+    }
+  }
+
+  private moveUp(): void {
+    if (!this.selected) return;
+    const index = this.indexOfRef(this.selected);
+    if (index > 0) {
+      this.reorder(index, index - 1);
+    }
+  }
+
+  private duplicate(): void {
+    if (!this.selected) return;
+    const el = (this.selected.location?.nativeElement || null) as HTMLElement | null;
+    if (!el) return;
+
+    const id = this.componentRefs.get(this.selected);
+    if (!id) return;
+
+    const model = this.componentModelService.getComponent(id);
+    if (!model) return;
+
+    const parent = model.getParent();
+    const parentId = parent?.getId() || '';
+    const index = this.indexOfRef(this.selected);
+
+    // Clone component model using toJSON
+    const definition = model.toJSON();
+    // Remove id to generate new one
+    if (definition.attributes) {
+      delete definition.attributes['id'];
+    }
+    const cloned = this.componentModelService.createComponent(definition, parentId);
+
+    // Create component instance
+    const componentType = this.registry[model.getTagName()] || this.nextComponent;
+    if (componentType) {
+      const clonedRef = this.insertWidget(componentType, index + 1) as ComponentRef<any>;
+      if (clonedRef) {
+        this.componentRefs.set(clonedRef, cloned.getId());
+        this.registerDraggable(clonedRef);
+      }
+    }
+  }
+
+  private delete(): void {
+    if (!this.selected) return;
+    const id = this.componentRefs.get(this.selected);
+    if (!id) return;
+
+    // Remove from model
+    this.componentModelService.removeComponent(id);
+
+    // Remove from view
+    const index = this.indexOfRef(this.selected);
+    const vcr = this.getViewContainerRef();
+    if (vcr && index >= 0) {
+      vcr.remove(index);
+      this.refs.splice(index, 1);
+      this.componentRefs.delete(this.selected);
+      this.selected.destroy();
+      this.selected = undefined;
+      this.hideToolbar();
+    }
+  }
+
+  private applyInlineEditDirective(element: HTMLElement): void {
+    // Tìm các textual elements trong component và apply service
+    const textualElements = element.querySelectorAll(
+      'h1, h2, h3, h4, h5, h6, p, span, .dz-heading, .dz-text'
+    ) as NodeListOf<HTMLElement>;
+
+    textualElements.forEach((el) => {
+      this.inlineEditService.applyToElement(el);
+    });
+
+    // Nếu chính element là textual, apply service vào nó
     const tag = element.tagName.toLowerCase();
     const isTextual = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div'].includes(tag);
-
     if (isTextual) {
-      this.editingElement = element;
-      element.contentEditable = 'true';
-      element.style.outline = '2px dashed #3b82f6';
-      element.style.outlineOffset = '2px';
-      element.style.cursor = 'text';
-      element.style.minHeight = '1em';
-
-      // Xử lý khi click vào element để focus và select text
-      const onElementClick = (e: MouseEvent) => {
-        // Chỉ xử lý nếu click trực tiếp vào element, không phải child
-        if (e.target === element) {
-          e.stopPropagation();
-          setTimeout(() => {
-            element.focus();
-            const range = document.createRange();
-            range.selectNodeContents(element);
-            const selection = window.getSelection();
-            selection?.removeAllRanges();
-            selection?.addRange(range);
-          }, 0);
-        }
-      };
-
-      // Xử lý khi blur (mất focus)
-      const onBlur = () => {
-        this.saveTextContent(element);
-        this.disableEditing();
-        element.removeEventListener('blur', onBlur);
-        element.removeEventListener('keydown', onKeyDown);
-        element.removeEventListener('click', onElementClick);
-      };
-
-      // Xử lý khi nhấn Enter (ngăn xuống dòng, lưu và blur)
-      const onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          this.saveTextContent(element);
-          element.blur();
-        }
-        // Escape để hủy
-        if (e.key === 'Escape') {
-          element.blur();
-        }
-      };
-
-      element.addEventListener('click', onElementClick);
-      element.addEventListener('blur', onBlur);
-      element.addEventListener('keydown', onKeyDown);
+      this.inlineEditService.applyToElement(element);
     }
-  }
-
-  private disableEditing(): void {
-    if (this.editingElement) {
-      this.editingElement.contentEditable = 'false';
-      this.editingElement.style.outline = '';
-      this.editingElement.style.outlineOffset = '';
-      this.editingElement.style.cursor = '';
-      this.editingElement.style.minHeight = '';
-      this.editingElement = null;
-    }
-  }
-
-  private saveTextContent(element: HTMLElement): void {
-    const newText = element.textContent || '';
-    // Cập nhật vào trait manager để sync với UI
-    this.traitManager.updateAttribute('textContent', newText);
-    // DOM đã được cập nhật trực tiếp qua contentEditable, không cần update model
-    // Khi export HTML sẽ lấy từ DOM
   }
 
   private resolveBlockHtml(label: string): string | null {
