@@ -61,8 +61,37 @@
 }
 
 /* Ensure every dropped item behaves like a block row */
-.dz-item,
+.dz-item {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
 .dz-item > * {
   display: block;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/* Đặc biệt cho carousel - cho phép scroll nhưng không tràn ra ngoài */
+.dz-item app-voucher-carousel {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  min-width: 0 !important;
+}
+
+.dz-item app-voucher-carousel ::ng-deep .p-carousel,
+.dz-item app-voucher-carousel ::ng-deep .p-carousel-container,
+.dz-item app-voucher-carousel ::ng-deep .p-carousel-items-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
 }

@@ -15,6 +15,7 @@ import { ComponentDefinition } from '../../core/dom-components/model/component.m
 import { HtmlBlock } from '../html-block/html-block';
 import { ParserService } from '../../core/parser/parser.service';
 import { SelectionService } from '../../core/editor/selection.service';
+import { TraitManagerService } from '../../core/trait-manager/trait-manager.service';
 import { DropIndicatorService } from '../../core/utils/drop-indicator.service';
 
 @Component({
@@ -44,11 +45,13 @@ export class DynamicZone extends CoreBase {
   private componentRefs = new Map<ComponentRef<any>, string>(); // ComponentRef -> componentId
   private refs: ComponentRef<any>[] = [];
   private selected?: ComponentRef<any>;
+  private editingElement: HTMLElement | null = null; // Element đang được edit
 
   // Services quản lý model và parse HTML
   private componentModelService = inject(ComponentModelService);
   private parser = inject(ParserService);
   private selection = inject(SelectionService);
+  private traitManager = inject(TraitManagerService);
   private dropIndicator = inject(DropIndicatorService);
 
   // Trạng thái để hiển thị highlight khi kéo vào vùng thả
@@ -513,17 +516,78 @@ export class DynamicZone extends CoreBase {
       e.preventDefault();
       e.stopPropagation();
       el.classList.add('drag-over');
+
+      // Show drop indicator for container components (Section, Row, Column)
+      if (typeof (ref.instance as any)?.getChildContainer === 'function') {
+        const innerEl = el.querySelector(
+          '.section-inner, .row-inner, .column-inner'
+        ) as HTMLElement;
+        if (innerEl) {
+          const innerRect = innerEl.getBoundingClientRect();
+          const relativeY = e.clientY - innerRect.top;
+
+          // Calculate insert index within the container
+          const children = Array.from(innerEl.children) as HTMLElement[];
+          let insertIndex = children.length;
+
+          for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+            const childRect = child.getBoundingClientRect();
+            const childMid = childRect.top - innerRect.top + childRect.height / 2;
+            if (relativeY < childMid) {
+              insertIndex = i;
+              break;
+            }
+          }
+
+          // Calculate indicator Y position
+          let indicatorY = 0;
+          if (children.length === 0) {
+            indicatorY = 0;
+          } else if (insertIndex >= children.length) {
+            const last = children[children.length - 1];
+            const lastRect = last.getBoundingClientRect();
+            indicatorY = lastRect.bottom - innerRect.top + 8;
+          } else {
+            const target = children[insertIndex];
+            const targetRect = target.getBoundingClientRect();
+            indicatorY = targetRect.top - innerRect.top;
+          }
+
+          // Show indicator at the calculated position
+          this.dropIndicator.show(
+            innerRect.left,
+            innerRect.top + indicatorY,
+            innerRect.width,
+            innerEl,
+            insertIndex
+          );
+        }
+      }
     };
 
     const dragLeave = (e: DragEvent) => {
       e.stopPropagation();
       el.classList.remove('drag-over');
+
+      // Hide drop indicator when leaving container component
+      if (typeof (ref.instance as any)?.getChildContainer === 'function') {
+        // Only hide if we're actually leaving the container (not just moving to a child)
+        const relatedTarget = e.relatedTarget as HTMLElement;
+        if (!relatedTarget || !el.contains(relatedTarget)) {
+          this.dropIndicator.hide();
+        }
+      }
     };
 
     const drop = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
       el.classList.remove('drag-over');
+
+      // Hide drop indicator
+      this.dropIndicator.hide();
+
       const fromStr = e.dataTransfer?.getData('text/dz-index');
       // Internal reorder within DZ
       if (fromStr) {
@@ -547,6 +611,10 @@ export class DynamicZone extends CoreBase {
       const useVcr = containerVcr || this.getViewContainerRef();
       if (!useVcr) return;
 
+      // Get insert index from drop indicator
+      const indicator = this.dropIndicator.getIndicator();
+      const insertIndex = indicator.insertIndex ?? undefined;
+
       // JSON payload with HTML (Blocks)
       if (json) {
         try {
@@ -554,7 +622,12 @@ export class DynamicZone extends CoreBase {
           const html = data?.content || '';
           if (html) {
             this.setContainerRef(useVcr);
-            const r = this.createWidget(HtmlBlock, { append: true });
+            let r: ComponentRef<any> | undefined;
+            if (insertIndex !== undefined) {
+              r = this.insertWidget(HtmlBlock, insertIndex) as ComponentRef<any>;
+            } else {
+              r = this.createWidget(HtmlBlock, { append: true });
+            }
             if (r && (r.instance as any)) {
               (r.instance as any).html = html;
               (r.changeDetectorRef as any)?.detectChanges?.();
@@ -595,7 +668,12 @@ export class DynamicZone extends CoreBase {
               this.componentDefinitions[key],
               targetParent.getId()
             );
-            const childRef = this.createWidget(this.nextComponent, { append: true });
+            let childRef: ComponentRef<any> | undefined;
+            if (insertIndex !== undefined) {
+              childRef = this.insertWidget(this.nextComponent, insertIndex) as ComponentRef<any>;
+            } else {
+              childRef = this.createWidget(this.nextComponent, { append: true });
+            }
             if (childRef) {
               this.componentRefs.set(childRef, created.getId());
               this.registerDraggable(childRef);
@@ -623,6 +701,17 @@ export class DynamicZone extends CoreBase {
     el.addEventListener('dragleave', dragLeave);
     el.addEventListener('drop', drop);
     el.addEventListener('dragend', dragEnd);
+
+    // For components with getChildContainer (like Section, Row, Column),
+    // also register drop events on the inner container element
+    if (typeof (ref.instance as any)?.getChildContainer === 'function') {
+      const innerEl = el.querySelector('.section-inner, .row-inner, .column-inner') as HTMLElement;
+      if (innerEl) {
+        innerEl.addEventListener('dragover', dragOver);
+        innerEl.addEventListener('dragleave', dragLeave);
+        innerEl.addEventListener('drop', drop);
+      }
+    }
   }
 
   private indexOfRef(ref: ComponentRef<any>): number {
@@ -642,6 +731,9 @@ export class DynamicZone extends CoreBase {
   }
 
   private select(ref: ComponentRef<any>): void {
+    // Disable editing cho element trước đó
+    this.disableEditing();
+
     const prevEl = (this.selected?.location?.nativeElement || null) as HTMLElement | null;
     if (prevEl) prevEl.classList.remove('dz-selected');
     this.selected = ref;
@@ -649,6 +741,268 @@ export class DynamicZone extends CoreBase {
     el?.classList.add('dz-selected');
     const id = this.componentRefs.get(ref);
     this.selection.select(id);
+
+    // Update Trait Manager target & traits
+    if (el) {
+      // Prefer inner textual element for text editing
+      const innerTextual = el.querySelector(
+        'h1, h2, h3, h4, h5, h6, p, .dz-heading, .dz-text'
+      ) as HTMLElement | null;
+      const targetEl = innerTextual || el;
+      this.traitManager.clear();
+      this.traitManager.select(targetEl);
+
+      // Enable contenteditable cho textual elements và tự động focus
+      const tag = targetEl.tagName.toLowerCase();
+      const isTextual = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div'].includes(tag);
+      if (isTextual) {
+        this.enableEditing(targetEl);
+        // Tự động focus và select text sau một chút delay để đảm bảo DOM đã render
+        setTimeout(() => {
+          targetEl.focus();
+          const range = document.createRange();
+          range.selectNodeContents(targetEl);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        }, 100);
+      }
+
+      // Common traits
+      this.traitManager.addTrait({
+        name: 'id',
+        label: 'ID',
+        type: 'text',
+        value: targetEl.id || '',
+      });
+      this.traitManager.addTrait({
+        name: 'class',
+        label: 'Class',
+        type: 'text',
+        value: targetEl.className || '',
+      });
+      // Common size traits
+      this.traitManager.addTrait({
+        name: 'width',
+        label: 'Width',
+        type: 'text',
+        value: (targetEl as HTMLElement).style.width || '',
+      });
+      this.traitManager.addTrait({
+        name: 'height',
+        label: 'Height',
+        type: 'text',
+        value: (targetEl as HTMLElement).style.height || '',
+      });
+
+      // Column-specific
+      if (
+        targetEl.classList.contains('dz-column') ||
+        targetEl.getAttribute('data-widget') === 'column'
+      ) {
+        this.traitManager.addTrait({
+          name: 'padding',
+          label: 'Padding',
+          type: 'text',
+          value: (targetEl as HTMLElement).style.padding || '',
+        });
+      }
+
+      // Row-specific (layout controls similar to screenshot)
+      if (targetEl.classList.contains('dz-row') || targetEl.getAttribute('data-widget') === 'row') {
+        this.traitManager.addTrait({
+          name: 'justifyContent',
+          label: 'Justify',
+          type: 'select',
+          value: (targetEl as HTMLElement).style.justifyContent || 'flex-start',
+          options: [
+            { value: 'flex-start', label: 'Start' },
+            { value: 'center', label: 'Center' },
+            { value: 'flex-end', label: 'End' },
+            { value: 'space-between', label: 'Space Between' },
+            { value: 'space-around', label: 'Space Around' },
+            { value: 'space-evenly', label: 'Space Evenly' },
+          ],
+        });
+        this.traitManager.addTrait({
+          name: 'alignItems',
+          label: 'Align',
+          type: 'select',
+          value: (targetEl as HTMLElement).style.alignItems || 'stretch',
+          options: [
+            { value: 'stretch', label: 'Stretch' },
+            { value: 'flex-start', label: 'Start' },
+            { value: 'center', label: 'Center' },
+            { value: 'flex-end', label: 'End' },
+          ],
+        });
+        this.traitManager.addTrait({
+          name: 'gap',
+          label: 'Gap',
+          type: 'text',
+          value: (targetEl as HTMLElement).style.gap || '',
+        });
+        this.traitManager.addTrait({
+          name: 'flexWrap',
+          label: 'Flex Wrap',
+          type: 'select',
+          value: (targetEl as HTMLElement).style.flexWrap || 'nowrap',
+          options: [
+            { value: 'nowrap', label: 'No Wrap' },
+            { value: 'wrap', label: 'Wrap' },
+            { value: 'wrap-reverse', label: 'Wrap Reverse' },
+          ],
+        });
+      }
+
+      // Text/Heading specific traits
+      // tag và isTextual đã được khai báo ở trên (line 756-757)
+      if (isTextual) {
+        this.traitManager.addTrait({
+          name: 'textContent',
+          label: 'Text',
+          type: 'text',
+          value: targetEl.textContent || '',
+        });
+
+        this.traitManager.addTrait({
+          name: 'fontSizeClass',
+          label: 'Font Size',
+          type: 'select',
+          value: '',
+          options: [
+            { value: '', label: 'Default' },
+            { value: 'text-sm', label: 'text-sm' },
+            { value: 'text-lg', label: 'text-lg' },
+            { value: 'text-xl', label: 'text-xl' },
+            { value: 'text-2xl', label: 'text-2xl' },
+            { value: 'text-[20px]', label: 'text-[20px]' },
+          ],
+        });
+
+        this.traitManager.addTrait({
+          name: 'fontFamilyClass',
+          label: 'Font Family',
+          type: 'select',
+          value: '',
+          options: [
+            { value: '', label: 'Default' },
+            { value: 'font-sans', label: 'font-sans' },
+            { value: 'font-serif', label: 'font-serif' },
+            { value: 'font-mono', label: 'font-mono' },
+          ],
+        });
+
+        this.traitManager.addTrait({
+          name: 'fontWeightClass',
+          label: 'Font Weight',
+          type: 'select',
+          value: '',
+          options: [
+            { value: '', label: 'Default' },
+            { value: 'font-light', label: 'font-light' },
+            { value: 'font-normal', label: 'font-normal' },
+            { value: 'font-medium', label: 'font-medium' },
+            { value: 'font-bold', label: 'font-bold' },
+            { value: 'font-black', label: 'font-black' },
+          ],
+        });
+
+        this.traitManager.addTrait({
+          name: 'textColorClass',
+          label: 'Text Color',
+          type: 'text',
+          value: '',
+        });
+
+        this.traitManager.addTrait({
+          name: 'bgColorClass',
+          label: 'Background',
+          type: 'text',
+          value: '',
+        });
+
+        this.traitManager.addTrait({
+          name: 'lineHeightClass',
+          label: 'Line Height',
+          type: 'select',
+          value: '',
+          options: [
+            { value: '', label: 'Default' },
+            { value: 'leading-tight', label: 'leading-tight' },
+            { value: 'leading-normal', label: 'leading-normal' },
+            { value: 'leading-loose', label: 'leading-loose' },
+            { value: 'leading-[1.8]', label: 'leading-[1.8]' },
+          ],
+        });
+
+        this.traitManager.addTrait({
+          name: 'letterSpacingClass',
+          label: 'Letter Spacing',
+          type: 'select',
+          value: '',
+          options: [
+            { value: '', label: 'Default' },
+            { value: 'tracking-tight', label: 'tracking-tight' },
+            { value: 'tracking-wider', label: 'tracking-wider' },
+            { value: 'tracking-[0.1em]', label: 'tracking-[0.1em]' },
+          ],
+        });
+
+        this.traitManager.addTrait({
+          name: 'textTransformClass',
+          label: 'Transform',
+          type: 'select',
+          value: '',
+          options: [
+            { value: '', label: 'Default' },
+            { value: 'uppercase', label: 'uppercase' },
+            { value: 'lowercase', label: 'lowercase' },
+            { value: 'capitalize', label: 'capitalize' },
+            { value: 'normal-case', label: 'normal-case' },
+          ],
+        });
+
+        this.traitManager.addTrait({
+          name: 'textAlignClass',
+          label: 'Text Align',
+          type: 'select',
+          value: '',
+          options: [
+            { value: '', label: 'Default' },
+            { value: 'text-left', label: 'text-left' },
+            { value: 'text-center', label: 'text-center' },
+            { value: 'text-right', label: 'text-right' },
+            { value: 'text-justify', label: 'text-justify' },
+          ],
+        });
+
+        this.traitManager.addTrait({
+          name: 'textShadow',
+          label: 'Text Shadow (CSS)',
+          type: 'text',
+          value: (targetEl as HTMLElement).style.textShadow || '',
+        });
+      }
+
+      // Debug log selected block info & traits
+      try {
+        const traitSummaries = this.traitManager
+          .getTraits()
+          .map((t) => ({ id: t.getId(), name: t.getName(), value: t.getValue() }));
+        console.log('[DZ.select] selected element:', {
+          tag: targetEl.tagName.toLowerCase(),
+          id: targetEl.id,
+          className: targetEl.className,
+          text: targetEl.textContent,
+          styles: {
+            width: (targetEl as HTMLElement).style.width,
+            height: (targetEl as HTMLElement).style.height,
+          },
+          traits: traitSummaries,
+        });
+      } catch {}
+    }
   }
 
   private calculateInsertIndex(mouseY: number): number {
@@ -677,6 +1031,81 @@ export class DynamicZone extends CoreBase {
       }
     }
     return children.length;
+  }
+
+  private enableEditing(element: HTMLElement): void {
+    const tag = element.tagName.toLowerCase();
+    const isTextual = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div'].includes(tag);
+
+    if (isTextual) {
+      this.editingElement = element;
+      element.contentEditable = 'true';
+      element.style.outline = '2px dashed #3b82f6';
+      element.style.outlineOffset = '2px';
+      element.style.cursor = 'text';
+      element.style.minHeight = '1em';
+
+      // Xử lý khi click vào element để focus và select text
+      const onElementClick = (e: MouseEvent) => {
+        // Chỉ xử lý nếu click trực tiếp vào element, không phải child
+        if (e.target === element) {
+          e.stopPropagation();
+          setTimeout(() => {
+            element.focus();
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+          }, 0);
+        }
+      };
+
+      // Xử lý khi blur (mất focus)
+      const onBlur = () => {
+        this.saveTextContent(element);
+        this.disableEditing();
+        element.removeEventListener('blur', onBlur);
+        element.removeEventListener('keydown', onKeyDown);
+        element.removeEventListener('click', onElementClick);
+      };
+
+      // Xử lý khi nhấn Enter (ngăn xuống dòng, lưu và blur)
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          this.saveTextContent(element);
+          element.blur();
+        }
+        // Escape để hủy
+        if (e.key === 'Escape') {
+          element.blur();
+        }
+      };
+
+      element.addEventListener('click', onElementClick);
+      element.addEventListener('blur', onBlur);
+      element.addEventListener('keydown', onKeyDown);
+    }
+  }
+
+  private disableEditing(): void {
+    if (this.editingElement) {
+      this.editingElement.contentEditable = 'false';
+      this.editingElement.style.outline = '';
+      this.editingElement.style.outlineOffset = '';
+      this.editingElement.style.cursor = '';
+      this.editingElement.style.minHeight = '';
+      this.editingElement = null;
+    }
+  }
+
+  private saveTextContent(element: HTMLElement): void {
+    const newText = element.textContent || '';
+    // Cập nhật vào trait manager để sync với UI
+    this.traitManager.updateAttribute('textContent', newText);
+    // DOM đã được cập nhật trực tiếp qua contentEditable, không cần update model
+    // Khi export HTML sẽ lấy từ DOM
   }
 
   private resolveBlockHtml(label: string): string | null {

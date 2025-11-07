@@ -10,8 +10,32 @@ import { Component, ElementRef, ViewChild, ViewContainerRef } from '@angular/cor
   `,
   styles: [
     `
-    .section { padding: 16px; border: 1px dashed #cbd5e1; background: #f8fafc; }
-    .section-inner { min-height: 24px; }
+      :host {
+        display: block;
+        width: 100%;
+      }
+      .section {
+        padding: 16px;
+        border: 1px dashed #cbd5e1;
+        background: #f8fafc;
+        min-height: 100px;
+        position: relative;
+        width: 100%;
+        box-sizing: border-box;
+        transition: all 0.2s;
+      }
+      .section.dz-selected {
+        border: 2px solid #60a5fa;
+        background: #f0f9ff;
+      }
+      .section.drag-over {
+        border-color: #60a5fa;
+        background: #dbeafe;
+      }
+      .section-inner {
+        width: 100%;
+        position: relative;
+      }
     `,
   ],
 })
@@ -23,5 +47,3 @@ export class SectionComponent {
     return this.childVcr;
   }
 }
-
-

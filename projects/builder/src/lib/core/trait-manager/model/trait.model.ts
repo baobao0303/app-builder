@@ -33,7 +33,7 @@ export class TraitModel {
     this._options = def.options;
 
     // Copy other properties
-    Object.keys(def).forEach(key => {
+    Object.keys(def).forEach((key) => {
       if (!['name', 'label', 'type', 'value', 'default', 'id', 'options'].includes(key)) {
         this._props[key] = def[key];
       }
@@ -84,4 +84,3 @@ export class TraitModel {
     };
   }
 }
-

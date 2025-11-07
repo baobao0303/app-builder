@@ -57,6 +57,23 @@ export class ComponentModelService {
   }
 
   /**
+   * Cập nhật ID của component và đồng bộ maps
+   */
+  updateComponentId(oldId: string, nextId: string): boolean {
+    const component = this.getComponent(oldId);
+    if (!component) return false;
+    if (!nextId || nextId === oldId) return true;
+    this.componentsMap.delete(oldId);
+    component.setId(nextId);
+    this.componentsMap.set(nextId, component);
+    // Nếu là root thì cập nhật lại tham chiếu
+    if (this.rootComponent && this.rootComponent.getId() === oldId) {
+      this.rootComponent = component;
+    }
+    return true;
+  }
+
+  /**
    * Xóa component
    */
   removeComponent(id: string): boolean {

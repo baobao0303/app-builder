@@ -1,0 +1,220 @@
+.tm-root {
+  width: 100%;
+  height: 100%;
+  background: inherit; /* use current sidebar bg */
+  color: inherit;
+  font-family: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    'Segoe UI Symbol', 'Noto Color Emoji';
+  font-size: 13px;
+  line-height: 18px;
+  display: flex;
+  flex-direction: column;
+}
+
+.tm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2d2d2d33;
+}
+.tm-title {
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tm-state select {
+  background: transparent;
+  color: inherit;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.tm-tagbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+}
+.tm-tagicon,
+.tm-add {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #3a3a3a;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.tm-body {
+  padding: 10px 12px;
+  overflow-y: auto;
+}
+
+/* Section block styles to resemble the screenshot */
+.tm-section {
+  border: 1px solid #2d2d2d33;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.tm-section-header {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.1);
+  color: inherit;
+  border: 0;
+  border-bottom: 1px solid #2d2d2d33;
+  font-weight: 600;
+  cursor: default;
+}
+.tm-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 12px;
+}
+.tm-field {
+  display: flex;
+  flex-direction: column;
+}
+.tm-col-2 {
+  grid-column: span 2;
+}
+.tm-input,
+.tm-field select {
+  width: 100%;
+  padding: 6px 8px;
+  background: #111827;
+  color: #e5e7eb;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+}
+.tm-field label {
+  margin-bottom: 6px;
+}
+
+/* Color group helpers */
+.tm-color-grid {
+  align-items: start;
+}
+.tm-color-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.tm-color-preview {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid #3a3a3a;
+}
+
+/* PrimeNG AutoComplete theming (state selector) */
+:host ::ng-deep .tm-state .p-autocomplete {
+  width: 100%;
+}
+:host ::ng-deep .tm-state .p-autocomplete .p-inputtext {
+  background: #ffffff; /* background trắng */
+  color: rgb(107, 114, 128);
+  border-color: rgb(63 63 70 / var(--tw-border-opacity, 1));
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 3.5px;
+  padding: 3.5px 28px 3.5px 7px; /* space for icon on the right */
+  height: 32px;
+  line-height: inherit;
+  font-size: inherit;
+  box-sizing: border-box;
+  width: 100%;
+}
+:host ::ng-deep .tm-state .p-autocomplete .p-inputtext:hover,
+:host ::ng-deep .tm-state .p-autocomplete .p-inputtext:focus {
+  border-color: rgb(63 63 70 / var(--tw-border-opacity, 1));
+  box-shadow: none;
+}
+
+/* Panel dropdown */
+:host ::ng-deep .tm-state .p-autocomplete-panel,
+:host ::ng-deep .tm-state .p-autocomplete-panel .p-autocomplete-items,
+:host ::ng-deep .tm-state .p-autocomplete-list-container {
+  background-color: #ffffff !important; /* force white */
+  color: #111827 !important; /* near-black for text */
+  font-size: inherit;
+  line-height: inherit;
+  border: none !important; /* remove borders */
+  border-radius: 8px; /* slightly larger rounding for shadow */
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+/* option items */
+:host ::ng-deep .tm-state .p-autocomplete-option {
+  background: transparent !important;
+  color: #111827 !important;
+  padding: 4px 8px;
+}
+:host ::ng-deep .tm-state .p-autocomplete-option:hover,
+:host ::ng-deep .tm-state .p-autocomplete-option.p-focus,
+:host ::ng-deep .tm-state .p-autocomplete-option.p-highlight {
+  background: rgba(0, 0, 0, 0.12) !important; /* darker gray on hover/select */
+  color: #111827 !important;
+}
+:host
+  ::ng-deep
+  .tm-state
+  .p-autocomplete-panel
+  .p-autocomplete-items
+  .p-autocomplete-item.p-highlight {
+  background: rgba(99, 102, 241, 0.12) !important;
+  color: #111827 !important;
+}
+/* Make dropdown button look like an inline chevron icon */
+:host ::ng-deep .tm-state .p-autocomplete .p-autocomplete-dropdown {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgb(156, 163, 175);
+}
+:host ::ng-deep .tm-state .p-autocomplete .p-autocomplete-dropdown .p-button-icon {
+  font-size: 12px;
+}
+:host ::ng-deep .tm-state .p-autocomplete .p-autocomplete-dropdown:hover,
+:host ::ng-deep .tm-state .p-autocomplete .p-autocomplete-dropdown:focus {
+  background: transparent;
+  box-shadow: none;
+}
+.trait-manager-panel {
+  padding: 10px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+.trait {
+  margin-bottom: 10px;
+}
+.trait label {
+  display: block;
+  margin-bottom: 4px;
+}
+.trait label .trait-id {
+  margin-left: 6px;
+  font-weight: 400;
+  color: #9ca3af;
+}
+.trait input,
+.trait select {
+  width: 100%;
+  padding: 4px;
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid #cccccc;
+  border-radius: 4px;
+}

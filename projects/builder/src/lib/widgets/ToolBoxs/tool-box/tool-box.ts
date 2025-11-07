@@ -30,20 +30,22 @@ export class ToolBox {
   } = {
     basic: [
       { key: '1-columns', label: '1 columns' },
-      // { key: '2-columns', label: '2 columns' },
-      // { key: '3-columns', label: '3 columns' },
-      // { key: '2-columns-3-7', label: '2 columns 3/7' },
+      { key: 'heading', label: 'Heading' },
+      { key: 'text', label: 'Text' },
+      { key: '2-columns', label: '2 columns' },
+      { key: '3-columns', label: '3 columns' },
+      { key: '2-columns-3-7', label: '2 columns 3/7' },
       { key: 'image', label: 'Image' },
       { key: 'list', label: 'List' },
       { key: 'card', label: 'Card' },
+      { key: 'voucher', label: 'Voucher Card' },
+      { key: 'voucher-carousel', label: 'Voucher Carousel' },
     ],
     forms: [
       // Thêm form items ở đây
     ],
     extra: [{ key: 'navbar', label: 'Navbar' }],
-    layout: [
-      // Thêm layout items ở đây
-    ],
+    layout: [{ key: 'section', label: 'Section' }],
   };
 
   toggleDropdown(category: string): void {

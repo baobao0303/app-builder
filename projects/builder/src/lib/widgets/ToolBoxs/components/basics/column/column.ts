@@ -5,8 +5,8 @@ import { Component, ElementRef, ViewChild, ViewContainerRef } from '@angular/cor
   standalone: true,
   template: `
     <div class="column dz-column" #host>
-      <div class="column-label">Column</div>
       <div class="column-inner" #child></div>
+      <div class="column-label">Column</div>
     </div>
   `,
   styles: [
@@ -39,8 +39,8 @@ import { Component, ElementRef, ViewChild, ViewContainerRef } from '@angular/cor
         z-index: 1;
       }
       .column-inner {
-        min-height: 60px;
-        padding: 8px;
+        // min-height: 60px;
+        // padding: 8px;
         width: 100%;
         box-sizing: border-box;
       }
