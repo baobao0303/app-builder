@@ -16,15 +16,6 @@ import { Component, ElementRef, ViewChild } from '@angular/core';
         border: 1px dashed transparent;
         cursor: text;
       }
-      .dz-heading:focus {
-        border: 1px dashed #60a5fa;
-      }
-      /* Border xanh khi được select */
-      :host.dz-selected .dz-heading,
-      .dz-heading.dz-selected {
-        border: 2px dashed #4285f4;
-        outline: none;
-      }
     `,
   ],
 })

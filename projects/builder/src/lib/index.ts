@@ -23,7 +23,7 @@ export * from './widgets/components/a/a.component';
 export * from './widgets/ToolBoxs/components/extras/navbar/navbar.component';
 export * from './widgets/canvas/canvas-zone';
 export * from './widgets/html-block/html-block';
-export * from './widgets/components/section/section';
+export * from './widgets/ToolBoxs/components/basics/section/section';
 export * from './widgets/block-manager';
 export * from './widgets/navigator';
 export * from './widgets/assets';

@@ -1,7 +1,7 @@
 import { Component, ElementRef, ViewChild, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ModalService } from '../../../core/modal-dialog/modal.service';
-import { ImageSelectModalComponent } from '../../modals/image-select-modal/image-select-modal.component';
+import { ImageSelectModalComponent } from '../../../../modals/image-select-modal/image-select-modal.component';
+import { ModalService } from 'builder';
 
 @Component({
   selector: 'app-image',

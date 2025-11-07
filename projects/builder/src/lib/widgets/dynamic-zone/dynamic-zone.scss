@@ -9,9 +9,25 @@
 }
 
 .dz-selected {
-  outline: 2px solid #4285f4; /* Google blue */
-  outline-offset: 0;
+  outline: 2px solid #4285f4 !important; /* Google blue */
+  outline-offset: 0 !important;
   position: relative;
+}
+
+/* Ensure selected elements are visible */
+.dz-item.dz-selected {
+  outline: 2px solid #4285f4 !important;
+  outline-offset: 0 !important;
+}
+
+/* For Angular components (app-row, app-column, etc.) */
+app-row.dz-selected,
+app-column.dz-selected,
+app-heading.dz-selected,
+app-text.dz-selected,
+app-image.dz-selected {
+  outline: 2px solid #4285f4 !important;
+  outline-offset: 0 !important;
 }
 
 :host {

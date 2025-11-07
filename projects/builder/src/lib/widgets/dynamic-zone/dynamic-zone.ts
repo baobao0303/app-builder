@@ -9,11 +9,16 @@ import {
   inject,
   ApplicationRef,
   Injector,
+  AfterViewInit,
+  OnDestroy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CoreBase } from '../../core/core.base';
 import { ComponentModelService } from '../../core/dom-components/component-model.service';
-import { ComponentDefinition } from '../../core/dom-components/model/component.model';
+import {
+  ComponentDefinition,
+  ComponentModel,
+} from '../../core/dom-components/model/component.model';
 import { HtmlBlock } from '../html-block/html-block';
 import { ParserService } from '../../core/parser/parser.service';
 import { SelectionService } from '../../core/editor/selection.service';
@@ -21,16 +26,24 @@ import { TraitManagerService } from '../../core/trait-manager/trait-manager.serv
 import { DropIndicatorService } from '../../core/utils/drop-indicator.service';
 import { InlineEditService } from '../../core/editor/inline-edit.service';
 import { FloatingToolbarComponent } from '../components/floating-toolbar/floating-toolbar.component';
+import { FloatingToolbarHeadingComponent } from '../components/floating-toolbar/floating-toobar-heading.component';
 import { ComponentRef as AngularComponentRef } from '@angular/core';
+import { UndoManagerService, MoveCommand, DuplicateCommand, DeleteCommand } from '../../core/undo-manager/undo-manager.service';
+
+interface ComponentMeta {
+  container: ViewContainerRef;
+  containerId: string;
+  parentId?: string;
+}
 
 @Component({
   selector: 'app-dynamic-zone',
   standalone: true,
-  imports: [CommonModule, FloatingToolbarComponent],
+  imports: [CommonModule],
   templateUrl: './dynamic-zone.html',
   styleUrl: './dynamic-zone.scss',
 })
-export class DynamicZone extends CoreBase {
+export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
   // Registry: key -> component type (được truyền từ ngoài, ví dụ toolbox quản lý map này)
   @Input() registry: Record<string, Type<unknown>> = {};
 
@@ -51,11 +64,17 @@ export class DynamicZone extends CoreBase {
 
   // Map ComponentRef -> ComponentModel để track
   private componentRefs = new Map<ComponentRef<any>, string>(); // ComponentRef -> componentId
-  private refs: ComponentRef<any>[] = [];
+  private componentMeta = new Map<ComponentRef<any>, ComponentMeta>();
+  private containerRefs = new Map<ViewContainerRef, ComponentRef<any>[]>();
+  private containerIds = new Map<ViewContainerRef, string>();
+  private containersById = new Map<string, ViewContainerRef>();
   private selected?: ComponentRef<any>;
   private toolbarRef?: AngularComponentRef<FloatingToolbarComponent>;
+  private headingToolbarRef?: AngularComponentRef<FloatingToolbarHeadingComponent>;
   private selectedElement?: HTMLElement;
   private clickOutsideHandler?: (e: MouseEvent) => void;
+  private canvasClickHandler?: (e: MouseEvent) => void;
+  private draggingRef?: ComponentRef<any>;
 
   // Services quản lý model và parse HTML
   private componentModelService = inject(ComponentModelService);
@@ -66,9 +85,164 @@ export class DynamicZone extends CoreBase {
   private inlineEditService = inject(InlineEditService);
   private appRef = inject(ApplicationRef);
   private injector = inject(Injector);
+  private undoManager = inject(UndoManagerService);
 
   // Trạng thái để hiển thị highlight khi kéo vào vùng thả
   protected isDragOver = false;
+
+  private ensureContainerRegistered(container: ViewContainerRef): string {
+    let id = this.containerIds.get(container);
+    if (!id) {
+      if (container === this.container) {
+        id = 'root';
+      } else {
+        id = `container-${this.containerIds.size + 1}`;
+      }
+      this.containerIds.set(container, id);
+      this.containersById.set(id, container);
+    }
+    return id;
+  }
+
+  private getContainerById(id?: string | null): ViewContainerRef | null {
+    if (!id) return null;
+    return this.containersById.get(id) ?? null;
+  }
+
+  private getContainerRefs(container: ViewContainerRef, create = true): ComponentRef<any>[] {
+    let list = this.containerRefs.get(container);
+    if (!list && create) {
+      list = [];
+      this.containerRefs.set(container, list);
+    }
+    return list ?? [];
+  }
+
+  private trackComponentRef(
+    ref: ComponentRef<any>,
+    container: ViewContainerRef,
+    options: { parentId?: string; componentId?: string; insertIndex?: number } = {}
+  ): void {
+    const containerId = this.ensureContainerRegistered(container);
+    const existingMeta = this.componentMeta.get(ref);
+
+    if (existingMeta) {
+      if (existingMeta.container !== container) {
+        const oldList = this.getContainerRefs(existingMeta.container, false);
+        const oldIdx = oldList.indexOf(ref);
+        if (oldIdx >= 0) {
+          oldList.splice(oldIdx, 1);
+        }
+      }
+
+      const list = this.getContainerRefs(container);
+      if (!list.includes(ref)) {
+        if (
+          options.insertIndex !== undefined &&
+          options.insertIndex >= 0 &&
+          options.insertIndex <= list.length
+        ) {
+          list.splice(options.insertIndex, 0, ref);
+        } else {
+          list.push(ref);
+        }
+      }
+
+      existingMeta.container = container;
+      existingMeta.containerId = containerId;
+      existingMeta.parentId = options.parentId;
+      this.componentMeta.set(ref, existingMeta);
+    } else {
+      const list = this.getContainerRefs(container);
+      if (!list.includes(ref)) {
+        if (
+          options.insertIndex !== undefined &&
+          options.insertIndex >= 0 &&
+          options.insertIndex <= list.length
+        ) {
+          list.splice(options.insertIndex, 0, ref);
+        } else {
+          list.push(ref);
+        }
+      }
+
+      this.componentMeta.set(ref, {
+        container,
+        containerId,
+        parentId: options.parentId,
+      });
+
+      ref.onDestroy(() => this.untrackComponentRef(ref));
+    }
+
+    if (options.componentId) {
+      this.componentRefs.set(ref, options.componentId);
+    }
+  }
+
+  private untrackComponentRef(ref: ComponentRef<any>): void {
+    const meta = this.componentMeta.get(ref);
+    if (meta) {
+      const list = this.getContainerRefs(meta.container, false);
+      const idx = list.indexOf(ref);
+      if (idx >= 0) {
+        list.splice(idx, 1);
+      }
+      this.componentMeta.delete(ref);
+    }
+    this.componentRefs.delete(ref);
+  }
+
+  ngAfterViewInit(): void {
+    // Add click handler for canvas to deselect when clicking on empty area
+    if (this.hostEl?.nativeElement) {
+      this.canvasClickHandler = (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        // Only deselect if clicking directly on canvas (host element), not on child elements
+        if (target === this.hostEl.nativeElement) {
+          // Click is directly on canvas empty area
+          console.log('[DZ] Click on canvas empty area, deselecting...');
+          this.deselect();
+        } else {
+          // Check if click is on empty area (not on any dz-item or interactive element)
+          const clickedItem = target.closest('.dz-item');
+          const isInteractive = target.closest(
+            'input, button, select, textarea, .floating-toolbar'
+          );
+          // If click is on host element but not on any item or interactive element, deselect
+          if (
+            this.hostEl.nativeElement.contains(target) &&
+            !clickedItem &&
+            !isInteractive &&
+            target !== this.hostEl.nativeElement
+          ) {
+            // Check if target is a direct child of host (empty area)
+            const isDirectChild = Array.from(this.hostEl.nativeElement.children).includes(target);
+            if (isDirectChild && !target.classList.contains('dz-item')) {
+              console.log('[DZ] Click on canvas empty area (direct child), deselecting...');
+              this.deselect();
+            }
+          }
+        }
+      };
+      this.hostEl.nativeElement.addEventListener('click', this.canvasClickHandler, true);
+      console.log('[DZ] Canvas click handler added');
+    }
+  }
+
+  ngOnDestroy(): void {
+    // Cleanup event listeners
+    if (this.canvasClickHandler && this.hostEl?.nativeElement) {
+      this.hostEl.nativeElement.removeEventListener('click', this.canvasClickHandler, true);
+      console.log('[DZ] Canvas click handler removed');
+    }
+    if (this.clickOutsideHandler) {
+      document.removeEventListener('click', this.clickOutsideHandler, true);
+      console.log('[DZ] Click outside handler removed');
+    }
+    // Hide toolbar and deselect
+    this.deselect();
+  }
 
   // Gọi từ toolbox khi click một item -> dùng helper của CoreBase
   add(key: string, options?: { append?: boolean; index?: number }): void {
@@ -78,11 +252,12 @@ export class DynamicZone extends CoreBase {
     this.nextComponent = cmp as Type<any>;
     this.setContainerRef(this.container);
 
+    let root = this.componentModelService.getRootComponent();
+
     // Tạo ComponentModel nếu có definition
     let componentId: string | undefined;
     if (this.componentDefinitions && this.componentDefinitions[key]) {
       // Đảm bảo có root component cho DynamicZone
-      let root = this.componentModelService.getRootComponent();
       if (!root) {
         root = this.componentModelService.setRootComponent({
           tagName: 'div',
@@ -116,13 +291,20 @@ export class DynamicZone extends CoreBase {
     }
     console.log('[DynamicZone.add] created componentRef? ', !!componentRef);
 
-    // Track mapping nếu có
-    if (componentRef && componentId) {
-      this.componentRefs.set(componentRef, componentId);
-    }
-
     // Enable internal drag to reorder
     if (componentRef) {
+      const parentId = componentId
+        ? this.componentModelService.getComponent(componentId)?.getParent()?.getId()
+        : root?.getId();
+      const currentRefs = this.getContainerRefs(this.container);
+      const insertIndex =
+        options?.index !== undefined && options.index >= 0 ? options.index : currentRefs.length;
+
+      this.trackComponentRef(componentRef, this.container, {
+        parentId,
+        componentId,
+        insertIndex,
+      });
       this.registerDraggable(componentRef);
     }
 
@@ -184,6 +366,15 @@ export class DynamicZone extends CoreBase {
       console.log('[DynamicZone.createNestedComponents] Child', index, 'created:', !!childRef);
 
       if (childRef) {
+        const parentComponentId = this.componentRefs.get(parentRef);
+        const childRefs = this.getContainerRefs(parentContainer);
+        this.trackComponentRef(childRef, parentContainer, {
+          parentId: parentComponentId,
+          insertIndex: childRefs.length,
+        });
+
+        this.registerDraggable(childRef);
+
         // Apply styles from componentDefinition if available
         if (childDef.style) {
           const hostEl = (childRef.location?.nativeElement || null) as HTMLElement | null;
@@ -198,9 +389,6 @@ export class DynamicZone extends CoreBase {
         if (childDef.components && childDef.components.length > 0) {
           this.createNestedComponents(childRef, childDef.components);
         }
-
-        // Register draggable for child
-        this.registerDraggable(childRef);
 
         // Track component model mapping if componentId exists
         // Note: ComponentModel is already created by ComponentModelService in add() method
@@ -279,6 +467,50 @@ export class DynamicZone extends CoreBase {
       'insertIndex=',
       insertIndex
     );
+
+    // Handle file drops (images, etc.)
+    const files = ev.dataTransfer?.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file.type.startsWith('image/')) {
+        console.log('[DynamicZone.drop] Image file dropped:', file.name, file.type);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const imageSrc = e.target?.result as string;
+          if (imageSrc) {
+            // Create ImageComponent
+            const imageKey = 'image';
+            if (this.registry[imageKey]) {
+              this.add(
+                imageKey,
+                insertIndex !== undefined ? { index: insertIndex } : { append: true }
+              );
+              // Set image source after component is created
+              // The add() method already calls registerDraggable, so we just need to set the image source
+              setTimeout(() => {
+                // Find the newly created component ref
+                const topRefs = this.getContainerRefs(this.container, false);
+                let newRef: ComponentRef<any> | undefined;
+                if (insertIndex !== undefined) {
+                  newRef = topRefs[insertIndex];
+                } else {
+                  newRef = topRefs[topRefs.length - 1];
+                }
+                if (newRef && (newRef.instance as any)?.imageSrc !== undefined) {
+                  (newRef.instance as any).imageSrc = imageSrc;
+                  (newRef.instance as any).imageAlt = file.name || 'Image';
+                  (newRef.changeDetectorRef as any)?.detectChanges?.();
+                  console.log('[DynamicZone.drop] Image source set:', imageSrc);
+                }
+              }, 50);
+            }
+          }
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+    }
+
     // Handle Blocks panel: application/json payload with HTML content
     const json = ev.dataTransfer?.getData('application/json');
     if (json) {
@@ -322,8 +554,17 @@ export class DynamicZone extends CoreBase {
               : this.componentModelService.createComponent(def, root.getId());
           console.log('[DynamicZone.drop] model created from JSON id=', created.getId());
 
-          // Draggable for newly added block
+          // Track & enable drag for newly added block
           if (ref) {
+            const parentId = created.getParent()?.getId() ?? root.getId();
+            const refs = this.getContainerRefs(this.container);
+            const position =
+              insertIndex !== undefined && insertIndex >= 0 ? insertIndex : refs.length;
+            this.trackComponentRef(ref, this.container, {
+              parentId,
+              componentId: created.getId(),
+              insertIndex: position,
+            });
             this.registerDraggable(ref);
           }
           return;
@@ -381,6 +622,18 @@ export class DynamicZone extends CoreBase {
           ? this.componentModelService.createComponent(def, root.getId(), insertIndex)
           : this.componentModelService.createComponent(def, root.getId());
       console.log('[DynamicZone.drop] model created from fallback id=', created2.getId());
+
+      if (ref) {
+        const parentId = created2.getParent()?.getId() ?? root.getId();
+        const refs = this.getContainerRefs(this.container);
+        const position = insertIndex !== undefined && insertIndex >= 0 ? insertIndex : refs.length;
+        this.trackComponentRef(ref, this.container, {
+          parentId,
+          componentId: created2.getId(),
+          insertIndex: position,
+        });
+        this.registerDraggable(ref);
+      }
       return;
     }
     console.warn('[DynamicZone.drop] unhandled key=', key);
@@ -416,14 +669,42 @@ export class DynamicZone extends CoreBase {
     const angularClasses = [
       'dz-item',
       'dz-selected',
-      'dz-row',
-      'dz-column',
+      'dz-row', // 保留 'row' 类，只移除 'dz-row'
+      'dz-column', // 保留 'column' 类，只移除 'dz-column'
       'dz-image',
       'dz-list',
       'dz-card',
     ];
 
     const cleanElement = (el: HTMLElement) => {
+      // 如果当前元素本身就是 column-label、image-overlay 或 image-placeholder，直接移除并返回
+      if (
+        el.classList.contains('column-label') ||
+        el.classList.contains('image-overlay') ||
+        el.classList.contains('image-placeholder')
+      ) {
+        el.remove();
+        return; // 移除后不需要继续处理
+      }
+
+      // 移除编辑相关的元素（预览和导出时不需要）
+      // 使用 querySelectorAll 递归查找所有需要移除的元素
+      const imageOverlays = el.querySelectorAll('.image-overlay');
+      imageOverlays.forEach((overlay) => overlay.remove());
+
+      const columnLabels = el.querySelectorAll('.column-label');
+      columnLabels.forEach((label) => label.remove());
+
+      const imagePlaceholders = el.querySelectorAll('.image-placeholder');
+      imagePlaceholders.forEach((placeholder) => placeholder.remove());
+
+      // 移除图片包装器的边框和背景（预览时不需要）
+      if (el.classList.contains('image-wrapper')) {
+        el.style.border = 'none';
+        el.style.background = 'transparent';
+        el.style.minHeight = 'auto';
+      }
+
       // 属性をクリーンアップ
       Array.from(el.attributes).forEach((attr) => {
         if (angularAttributes.some((a) => attr.name.startsWith(a))) {
@@ -441,16 +722,99 @@ export class DynamicZone extends CoreBase {
         }
       }
 
-      // 子要素も再帰的にクリーンアップ
-      Array.from(el.children).forEach((child) => {
+      // 移除编辑相关的样式属性
+      if (el.style) {
+        // 移除 cursor: pointer（预览时不需要）
+        if (el.style.cursor === 'pointer') {
+          el.style.cursor = '';
+        }
+      }
+
+      // 子要素も再帰的にクリーンアップ（在移除不需要的元素之后）
+      // 使用 Array.from 创建副本，因为 children 可能在迭代时被修改
+      const children = Array.from(el.children);
+      children.forEach((child) => {
         cleanElement(child as HTMLElement);
       });
     };
+
+    // 在开始递归清理之前，先移除所有编辑相关的元素（确保所有 column-label 都被移除）
+    const allImageOverlays = clone.querySelectorAll('.image-overlay');
+    allImageOverlays.forEach((overlay) => overlay.remove());
+
+    const allColumnLabels = clone.querySelectorAll('.column-label');
+    allColumnLabels.forEach((label) => label.remove());
+
+    const allImagePlaceholders = clone.querySelectorAll('.image-placeholder');
+    allImagePlaceholders.forEach((placeholder) => placeholder.remove());
 
     cleanElement(clone);
 
     return clone.innerHTML;
   }
+
+  // Component styles mapping - 组件样式映射
+  private readonly componentStyles: Record<string, string> = {
+    '.column': `
+      flex: 1;
+      min-height: 60px;
+      border: none;
+      background: transparent;
+      position: relative;
+      width: 100%;
+      box-sizing: border-box;
+    `,
+    '.column[style*="width"]': `
+      flex: none;
+    `,
+    '.column-label': `
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #64748b;
+      font-size: 14px;
+      font-weight: 500;
+      pointer-events: none;
+      z-index: 1;
+    `,
+    '.column-inner': `
+      width: 100%;
+      box-sizing: border-box;
+    `,
+    '.column-inner:not(:empty) ~ .column-label': `
+      display: none;
+    `,
+    '.row': `
+      display: flex;
+      gap: 0;
+      padding: 0;
+      min-height: 60px;
+      border: none;
+      background: transparent;
+      width: 100%;
+      box-sizing: border-box;
+    `,
+    '.row-inner': `
+      display: flex;
+      gap: 0;
+      width: 100%;
+      min-height: 44px;
+      flex: 1;
+    `,
+    '.image-wrapper': `
+      position: relative;
+      width: 100%;
+      border: none;
+      background: transparent;
+      overflow: hidden;
+    `,
+    '.image': `
+      width: 100%;
+      height: auto;
+      display: block;
+    `,
+  };
 
   // 実際のDOM要素からスタイルを取得
   exportStyles(): string {
@@ -459,6 +823,7 @@ export class DynamicZone extends CoreBase {
 
     const styles: string[] = [];
     const processed = new Set<HTMLElement>();
+    const addedComponentStyles = new Set<string>();
 
     const collectStyles = (el: HTMLElement) => {
       if (processed.has(el)) return;
@@ -470,6 +835,37 @@ export class DynamicZone extends CoreBase {
         const selector = this.getElementSelector(el);
         if (selector) {
           styles.push(`${selector} { ${inlineStyle} }`);
+        }
+      }
+
+      // 检查并添加组件样式
+      const classes = Array.from(el.classList);
+      for (const className of classes) {
+        const styleKey = `.${className}`;
+        if (this.componentStyles[styleKey] && !addedComponentStyles.has(styleKey)) {
+          styles.push(`${styleKey} { ${this.componentStyles[styleKey].trim()} }`);
+          addedComponentStyles.add(styleKey);
+        }
+      }
+
+      // 检查特殊选择器（如 .column[style*="width"]）
+      if (el.classList.contains('column') && el.getAttribute('style')?.includes('width')) {
+        const specialKey = '.column[style*="width"]';
+        if (this.componentStyles[specialKey] && !addedComponentStyles.has(specialKey)) {
+          styles.push(`${specialKey} { ${this.componentStyles[specialKey].trim()} }`);
+          addedComponentStyles.add(specialKey);
+        }
+      }
+
+      // 检查 column-inner 和 column-label 的关系
+      if (el.classList.contains('column-inner')) {
+        const hasContent = el.children.length > 0 || el.textContent?.trim();
+        if (hasContent) {
+          const specialKey = '.column-inner:not(:empty) ~ .column-label';
+          if (this.componentStyles[specialKey] && !addedComponentStyles.has(specialKey)) {
+            styles.push(`${specialKey} { ${this.componentStyles[specialKey].trim()} }`);
+            addedComponentStyles.add(specialKey);
+          }
         }
       }
 
@@ -497,26 +893,86 @@ export class DynamicZone extends CoreBase {
 
   // ========== Drag reorder support within zone ===========
   private registerDraggable(ref: ComponentRef<any>): void {
-    const vcr = this.getViewContainerRef();
-    if (!vcr) return;
+    // Ensure metadata exists for this component
+    if (!this.componentMeta.has(ref)) {
+      console.warn('[DynamicZone] registerDraggable without metadata, attaching to root container');
+      this.trackComponentRef(ref, this.container);
+    }
 
-    this.refs.push(ref);
-    ref.onDestroy(() => {
-      const idx = this.refs.indexOf(ref);
-      if (idx >= 0) this.refs.splice(idx, 1);
-      this.componentRefs.delete(ref);
-    });
+    const meta = this.componentMeta.get(ref);
+    if (!meta) return;
+
+    const container = meta.container;
+    const containerId = meta.containerId;
+    const list = this.getContainerRefs(container);
+    if (!list.includes(ref)) {
+      list.push(ref);
+    }
 
     const el = (ref.location?.nativeElement || null) as HTMLElement | null;
     if (!el) return;
     el.setAttribute('draggable', 'true');
     el.classList.add('dz-item');
+    el.dataset['dzContainer'] = containerId;
 
     const click = (e: Event) => {
-      e.stopPropagation();
-      console.log('Element clicked, calling select()', ref);
-      // Select first, then inline edit will be handled separately
-      this.select(ref);
+      const target = e.target as HTMLElement;
+
+      // Check if clicking on image element or image overlay/placeholder
+      const isImageElement =
+        target.matches('img, .image-wrapper, .image-overlay, .image-placeholder, .dz-image') ||
+        target.closest('.image-wrapper, .image-overlay, .image-placeholder, .dz-image');
+
+      if (isImageElement) {
+        // Don't stop propagation - let ImageComponent handle the click to open modal
+        // But still select the component for toolbar
+        if (target !== el && !target.closest('.image-wrapper')) {
+          // Clicking on image child - let it handle modal, but select parent component
+          setTimeout(() => {
+            this.select(ref);
+          }, 0);
+        } else {
+          // Clicking on image wrapper itself - let ImageComponent handle it
+          // Only select if not clicking on interactive elements (overlay, placeholder)
+          const isInteractive =
+            target.matches('.image-overlay, .image-placeholder') ||
+            target.closest('.image-overlay, .image-placeholder');
+          if (!isInteractive) {
+            setTimeout(() => {
+              this.select(ref);
+            }, 0);
+          }
+        }
+        return;
+      }
+
+      // Check if clicking on a textual element (heading, paragraph, etc.)
+      const isTextualElement =
+        target.matches('h1, h2, h3, h4, h5, h6, p, span, .dz-heading, .dz-text') ||
+        target.closest('h1, h2, h3, h4, h5, h6, p, span, .dz-heading, .dz-text');
+
+      if (isTextualElement) {
+        // Don't stop propagation - let inline edit service handle the click
+        // But still select the component for toolbar
+        if (target !== el) {
+          // Clicking on textual child - let it handle editing, but select parent component
+          setTimeout(() => {
+            this.select(ref);
+          }, 0);
+        } else {
+          // Clicking on host element itself
+          e.stopPropagation();
+          this.select(ref);
+        }
+        return;
+      }
+
+      // For non-textual elements, stop propagation and select
+      if ((e as MouseEvent).detail > 0) {
+        e.stopPropagation();
+        console.log('Element clicked, calling select()', ref);
+        this.select(ref);
+      }
     };
 
     // Apply inline edit directive cho textual elements AFTER click handler
@@ -527,61 +983,70 @@ export class DynamicZone extends CoreBase {
       e.stopPropagation();
       const index = this.indexOfRef(ref);
       e.dataTransfer?.setData('text/dz-index', String(index));
+      e.dataTransfer?.setData('text/dz-container', containerId);
+      if (meta.parentId) {
+        e.dataTransfer?.setData('text/dz-parent', meta.parentId);
+      }
       e.dataTransfer?.setDragImage?.(new Image(), 0, 0);
       el.classList.add('dragging');
+      this.draggingRef = ref;
     };
 
     const dragOver = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      el.classList.add('drag-over');
+
+      // Determine if we're over the inner container or the outer element
+      const target = e.target as HTMLElement;
+      const innerEl = el.querySelector('.section-inner, .row-inner, .column-inner') as HTMLElement;
+
+      // If dragging over inner element, use inner element for calculations
+      const containerEl =
+        innerEl && (innerEl.contains(target) || target === innerEl) ? innerEl : el;
+
+      containerEl.classList.add('drag-over');
 
       // Show drop indicator for container components (Section, Row, Column)
-      if (typeof (ref.instance as any)?.getChildContainer === 'function') {
-        const innerEl = el.querySelector(
-          '.section-inner, .row-inner, .column-inner'
-        ) as HTMLElement;
-        if (innerEl) {
-          const innerRect = innerEl.getBoundingClientRect();
-          const relativeY = e.clientY - innerRect.top;
+      if (typeof (ref.instance as any)?.getChildContainer === 'function' && innerEl) {
+        const innerRect = innerEl.getBoundingClientRect();
+        const relativeY = e.clientY - innerRect.top;
 
-          // Calculate insert index within the container
-          const children = Array.from(innerEl.children) as HTMLElement[];
-          let insertIndex = children.length;
+        // Calculate insert index within the container
+        const children = Array.from(innerEl.children) as HTMLElement[];
+        let insertIndex = children.length;
 
-          for (let i = 0; i < children.length; i++) {
-            const child = children[i];
-            const childRect = child.getBoundingClientRect();
-            const childMid = childRect.top - innerRect.top + childRect.height / 2;
-            if (relativeY < childMid) {
-              insertIndex = i;
-              break;
-            }
+        for (let i = 0; i < children.length; i++) {
+          const child = children[i];
+          const childRect = child.getBoundingClientRect();
+          const childMid = childRect.top - innerRect.top + childRect.height / 2;
+          if (relativeY < childMid) {
+            insertIndex = i;
+            break;
           }
-
-          // Calculate indicator Y position
-          let indicatorY = 0;
-          if (children.length === 0) {
-            indicatorY = 0;
-          } else if (insertIndex >= children.length) {
-            const last = children[children.length - 1];
-            const lastRect = last.getBoundingClientRect();
-            indicatorY = lastRect.bottom - innerRect.top + 8;
-          } else {
-            const target = children[insertIndex];
-            const targetRect = target.getBoundingClientRect();
-            indicatorY = targetRect.top - innerRect.top;
-          }
-
-          // Show indicator at the calculated position
-          this.dropIndicator.show(
-            innerRect.left,
-            innerRect.top + indicatorY,
-            innerRect.width,
-            innerEl,
-            insertIndex
-          );
         }
+
+        // Calculate indicator Y position
+        let indicatorY = 0;
+        if (children.length === 0) {
+          indicatorY = 0;
+        } else if (insertIndex >= children.length) {
+          const last = children[children.length - 1];
+          const lastRect = last.getBoundingClientRect();
+          indicatorY = lastRect.bottom - innerRect.top + 8;
+        } else {
+          const target = children[insertIndex];
+          const targetRect = target.getBoundingClientRect();
+          indicatorY = targetRect.top - innerRect.top;
+        }
+
+        // Show indicator at the calculated position
+        this.dropIndicator.show(
+          innerRect.left,
+          innerRect.top + indicatorY,
+          innerRect.width,
+          innerEl,
+          insertIndex
+        );
       }
     };
 
@@ -602,19 +1067,85 @@ export class DynamicZone extends CoreBase {
     const drop = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
+
+      // Remove drag-over class from both outer and inner elements
       el.classList.remove('drag-over');
+      const innerEl = el.querySelector('.section-inner, .row-inner, .column-inner') as HTMLElement;
+      if (innerEl) {
+        innerEl.classList.remove('drag-over');
+      }
 
       // Hide drop indicator
       this.dropIndicator.hide();
+
+      const targetMeta = this.componentMeta.get(ref);
+      const targetContainer = targetMeta?.container ?? this.container;
+      const targetContainerId = targetMeta?.containerId ?? 'root';
+      const childContainer =
+        typeof (ref.instance as any)?.getChildContainer === 'function'
+          ? (ref.instance as any).getChildContainer()
+          : null;
+      const indicatorState = this.dropIndicator.getIndicator();
 
       const fromStr = e.dataTransfer?.getData('text/dz-index');
       // Internal reorder within DZ
       if (fromStr) {
         const from = parseInt(fromStr, 10);
-        const to = this.indexOfRef(ref);
-        this.reorder(from, to);
-        const root = this.componentModelService.getRootComponent();
-        if (root) this.componentModelService.reorderChild(root.getId(), from, to);
+        const sourceContainerId = e.dataTransfer?.getData('text/dz-container') || targetContainerId;
+        const sourceContainer = this.getContainerById(sourceContainerId) ?? targetContainer;
+        const dropTargetEl = e.target as HTMLElement;
+        const isDroppingIntoChild =
+          !!childContainer &&
+          !!innerEl &&
+          (dropTargetEl === innerEl || innerEl.contains(dropTargetEl));
+
+        const destinationContainer =
+          isDroppingIntoChild && childContainer ? childContainer : targetContainer;
+        const destinationContainerId =
+          isDroppingIntoChild && childContainer
+            ? this.ensureContainerRegistered(childContainer)
+            : targetContainerId;
+
+        const destinationIndex =
+          isDroppingIntoChild && childContainer
+            ? Math.max(
+                0,
+                indicatorState.insertIndex ?? this.getContainerRefs(childContainer, false).length
+              )
+            : this.indexOfRef(ref);
+
+        if (sourceContainer === destinationContainer) {
+          this.reorderWithinContainer(destinationContainer, from, destinationIndex);
+
+          const parentId =
+            isDroppingIntoChild && childContainer
+              ? this.componentRefs.get(ref) ??
+                targetMeta?.parentId ??
+                this.componentModelService.getRootComponent()?.getId()
+              : targetMeta?.parentId ?? this.componentModelService.getRootComponent()?.getId();
+          if (parentId) {
+            this.componentModelService.reorderChild(parentId, from, destinationIndex);
+          }
+        } else {
+          // Moving between containers -> handled in update-drop-move step
+          const parentId =
+            isDroppingIntoChild && childContainer
+              ? this.componentRefs.get(ref) || undefined
+              : e.dataTransfer?.getData('text/dz-parent') || targetMeta?.parentId;
+          this.handleCrossContainerMove({
+            fromIndex: from,
+            toIndex: destinationIndex,
+            fromContainer: sourceContainer,
+            toContainer: destinationContainer,
+            sourceContainerId,
+            targetContainerId: destinationContainerId,
+            sourceParentId: parentId || undefined,
+            targetParentId:
+              isDroppingIntoChild && childContainer
+                ? this.componentRefs.get(ref) || undefined
+                : targetMeta?.parentId,
+          });
+        }
         el.classList.remove('dragging');
         return;
       }
@@ -628,7 +1159,17 @@ export class DynamicZone extends CoreBase {
           ? (ref.instance as any).getChildContainer()
           : null;
       const useVcr = containerVcr || this.getViewContainerRef();
-      if (!useVcr) return;
+      if (!useVcr) {
+        console.warn('[DynamicZone.drop] No ViewContainerRef available for drop');
+        return;
+      }
+
+      console.log(
+        '[DynamicZone.drop] Dropping into container, parentId:',
+        parentId,
+        'useVcr:',
+        useVcr
+      );
 
       // Get insert index from drop indicator
       const indicator = this.dropIndicator.getIndicator();
@@ -660,7 +1201,30 @@ export class DynamicZone extends CoreBase {
               const def =
                 this.parser.parseHtml(html) ||
                 ({ tagName: 'div', content: html } as ComponentDefinition);
-              this.componentModelService.createComponent(def, targetParent.getId());
+              const created = this.componentModelService.createComponent(def, targetParent.getId());
+
+              if (r) {
+                const containerRefs = this.getContainerRefs(useVcr);
+                const position =
+                  insertIndex !== undefined && insertIndex >= 0
+                    ? insertIndex
+                    : containerRefs.length;
+                this.trackComponentRef(r, useVcr, {
+                  parentId: targetParent.getId(),
+                  componentId: created.getId(),
+                  insertIndex: position,
+                });
+                this.registerDraggable(r);
+              }
+            } else if (r) {
+              const containerRefs = this.getContainerRefs(useVcr);
+              const position =
+                insertIndex !== undefined && insertIndex >= 0 ? insertIndex : containerRefs.length;
+              this.trackComponentRef(r, useVcr, {
+                parentId: undefined,
+                insertIndex: position,
+              });
+              this.registerDraggable(r);
             }
             return;
           }
@@ -694,7 +1258,14 @@ export class DynamicZone extends CoreBase {
               childRef = this.createWidget(this.nextComponent, { append: true });
             }
             if (childRef) {
-              this.componentRefs.set(childRef, created.getId());
+              const containerRefs = this.getContainerRefs(useVcr);
+              const position =
+                insertIndex !== undefined && insertIndex >= 0 ? insertIndex : containerRefs.length;
+              this.trackComponentRef(childRef, useVcr, {
+                parentId: targetParent.getId(),
+                componentId: created.getId(),
+                insertIndex: position,
+              });
               this.registerDraggable(childRef);
 
               // Handle nested components from componentDefinitions
@@ -712,6 +1283,9 @@ export class DynamicZone extends CoreBase {
     const dragEnd = () => {
       el.classList.remove('dragging');
       el.classList.remove('drag-over');
+      if (this.draggingRef === ref) {
+        this.draggingRef = undefined;
+      }
     };
 
     // Use capture phase to ensure select() runs before inline edit
@@ -725,29 +1299,138 @@ export class DynamicZone extends CoreBase {
     // For components with getChildContainer (like Section, Row, Column),
     // also register drop events on the inner container element
     if (typeof (ref.instance as any)?.getChildContainer === 'function') {
-      const innerEl = el.querySelector('.section-inner, .row-inner, .column-inner') as HTMLElement;
-      if (innerEl) {
-        innerEl.addEventListener('dragover', dragOver);
-        innerEl.addEventListener('dragleave', dragLeave);
-        innerEl.addEventListener('drop', drop);
-      }
+      // Use setTimeout to ensure inner element is rendered
+      setTimeout(() => {
+        const innerEl = el.querySelector(
+          '.section-inner, .row-inner, .column-inner'
+        ) as HTMLElement;
+        if (innerEl) {
+          innerEl.addEventListener('dragover', dragOver);
+          innerEl.addEventListener('dragenter', (e: DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            innerEl.classList.add('drag-over');
+          });
+          innerEl.addEventListener('dragleave', dragLeave);
+          innerEl.addEventListener('drop', drop);
+          console.log('[DynamicZone] Registered drop events on inner element:', innerEl.className);
+        } else {
+          console.warn(
+            '[DynamicZone] Inner element not found for component with getChildContainer'
+          );
+        }
+      }, 0);
     }
   }
 
   private indexOfRef(ref: ComponentRef<any>): number {
-    return this.refs.indexOf(ref);
+    const meta = this.componentMeta.get(ref);
+    if (!meta) return -1;
+    const list = this.getContainerRefs(meta.container, false);
+    return list.indexOf(ref);
   }
 
-  private reorder(from: number, to: number): void {
-    const vcr = this.getViewContainerRef();
-    if (!vcr) return;
+  private reorderWithinContainer(container: ViewContainerRef, from: number, to: number): void {
     if (from === -1 || to === -1 || from === to) return;
-    const view = vcr.get(from);
+
+    const view = container.get(from);
     if (!view) return;
-    vcr.move(view, to);
-    // sync refs order
-    const moved = this.refs.splice(from, 1)[0];
-    this.refs.splice(to, 0, moved);
+
+    container.move(view, to);
+
+    const list = this.getContainerRefs(container);
+    if (from < list.length) {
+      const [moved] = list.splice(from, 1);
+      list.splice(to, 0, moved);
+    }
+  }
+
+  private handleCrossContainerMove(config: {
+    fromIndex: number;
+    toIndex: number;
+    fromContainer: ViewContainerRef;
+    toContainer: ViewContainerRef;
+    sourceContainerId: string;
+    targetContainerId: string;
+    sourceParentId?: string;
+    targetParentId?: string;
+  }): void {
+    const { fromIndex, toIndex, fromContainer, toContainer, sourceParentId, targetParentId } =
+      config;
+
+    const fromList = this.getContainerRefs(fromContainer, false);
+    const draggedRef =
+      this.draggingRef ??
+      (fromIndex >= 0 && fromIndex < fromList.length ? fromList[fromIndex] : undefined);
+
+    if (!draggedRef) {
+      console.warn('[DynamicZone] Unable to determine dragged component for cross-container move');
+      return;
+    }
+
+    const detachedView = fromContainer.detach(fromIndex);
+    if (!detachedView) {
+      console.warn('[DynamicZone] Failed to detach view for cross-container move');
+      return;
+    }
+
+    const insertIndex =
+      toIndex >= 0 && toIndex <= toContainer.length ? toIndex : toContainer.length;
+    toContainer.insert(detachedView, insertIndex);
+
+    const componentId = this.componentRefs.get(draggedRef);
+
+    let targetParentModelId = targetParentId;
+    if (!targetParentModelId) {
+      const root = this.componentModelService.getRootComponent();
+      targetParentModelId = root?.getId();
+    }
+
+    if (componentId) {
+      const componentModel = this.componentModelService.getComponent(componentId);
+      if (componentModel) {
+        const definition = componentModel.toJSON();
+        this.componentModelService.removeComponent(componentId);
+
+        let parentModel = targetParentModelId
+          ? this.componentModelService.getComponent(targetParentModelId)
+          : null;
+
+        if (!parentModel) {
+          parentModel = this.componentModelService.getRootComponent();
+          if (!parentModel) {
+            parentModel = this.componentModelService.setRootComponent({
+              tagName: 'div',
+              attributes: { 'data-zone': 'dynamic-zone' },
+            });
+          }
+        }
+
+        const created = this.componentModelService.createComponent(
+          definition,
+          parentModel.getId(),
+          insertIndex
+        );
+
+        this.componentRefs.set(draggedRef, created.getId());
+        this.trackComponentRef(draggedRef, toContainer, {
+          parentId: parentModel.getId(),
+          componentId: created.getId(),
+          insertIndex,
+        });
+
+        this.draggingRef = undefined;
+        return;
+      }
+    }
+
+    this.trackComponentRef(draggedRef, toContainer, {
+      parentId: targetParentModelId,
+      componentId,
+      insertIndex,
+    });
+
+    this.draggingRef = undefined;
   }
 
   private select(ref: ComponentRef<any>): void {
@@ -759,22 +1442,39 @@ export class DynamicZone extends CoreBase {
     const id = this.componentRefs.get(ref);
     this.selection.select(id);
 
+    // Log DOM position information
+    if (el) {
+      this.logDOMPosition(el);
+    }
+
     // Show floating toolbar
     if (el) {
       this.selectedElement = el;
       console.log('Showing toolbar for element:', el, el.tagName);
-      this.showToolbar(el);
+      this.showToolbar(el, ref);
     } else {
       this.hideToolbar();
     }
 
     // Update Trait Manager target & traits
     if (el) {
-      // Prefer inner textual element for text editing
-      const innerTextual = el.querySelector(
-        'h1, h2, h3, h4, h5, h6, p, .dz-heading, .dz-text'
-      ) as HTMLElement | null;
-      const targetEl = innerTextual || el;
+      // For Row/Column components, always select the component itself, not inner textual elements
+      const isLayoutComponent =
+        el.classList.contains('dz-row') ||
+        el.classList.contains('dz-column') ||
+        el.getAttribute('data-widget') === 'row' ||
+        el.getAttribute('data-widget') === 'column' ||
+        el.tagName?.toLowerCase() === 'app-row' ||
+        el.tagName?.toLowerCase() === 'app-column';
+
+      let targetEl = el;
+      if (!isLayoutComponent) {
+        // For non-layout components, prefer inner textual element for text editing
+        const innerTextual = el.querySelector(
+          'h1, h2, h3, h4, h5, h6, p, .dz-heading, .dz-text'
+        ) as HTMLElement | null;
+        targetEl = innerTextual || el;
+      }
       this.traitManager.clear();
       this.traitManager.select(targetEl);
 
@@ -819,7 +1519,59 @@ export class DynamicZone extends CoreBase {
       }
 
       // Row-specific (layout controls similar to screenshot)
-      if (targetEl.classList.contains('dz-row') || targetEl.getAttribute('data-widget') === 'row') {
+      // Check for app-row tag or dz-row class or data-widget attribute
+      const isRowComponent =
+        targetEl.tagName?.toLowerCase() === 'app-row' ||
+        targetEl.classList.contains('dz-row') ||
+        targetEl.getAttribute('data-widget') === 'row';
+
+      if (isRowComponent) {
+        // Find container div (.row.dz-row or .column.dz-column)
+        let containerDiv: HTMLElement | null = null;
+        if (targetEl.tagName?.toLowerCase() === 'app-row') {
+          containerDiv = targetEl.querySelector(
+            '.row.dz-row, .column.dz-column, .dz-row, .dz-column'
+          ) as HTMLElement | null;
+        } else if (
+          targetEl.classList.contains('row') ||
+          targetEl.classList.contains('dz-row') ||
+          targetEl.classList.contains('column') ||
+          targetEl.classList.contains('dz-column')
+        ) {
+          containerDiv = targetEl;
+        }
+
+        // Determine current flexDirection from class instead of style
+        let currentFlexDirection = 'row';
+        if (containerDiv) {
+          // If has column class, direction is column
+          if (
+            containerDiv.classList.contains('column') ||
+            containerDiv.classList.contains('dz-column')
+          ) {
+            currentFlexDirection = 'column';
+          } else {
+            // Default to row
+            currentFlexDirection = 'row';
+          }
+        } else {
+          // Fallback: try to read from inner element style
+          const inner = targetEl.querySelector('.row-inner, .column-inner') as HTMLElement | null;
+          if (inner) {
+            currentFlexDirection = inner.style.flexDirection || 'row';
+          }
+        }
+
+        this.traitManager.addTrait({
+          name: 'flexDirection',
+          label: '方向',
+          type: 'select',
+          value: currentFlexDirection,
+          options: [
+            { value: 'row', label: '横向' },
+            { value: 'column', label: '纵向' },
+          ],
+        });
         this.traitManager.addTrait({
           name: 'justifyContent',
           label: 'Justify',
@@ -1044,111 +1796,262 @@ export class DynamicZone extends CoreBase {
     return children.length;
   }
 
-  private showToolbar(element: HTMLElement): void {
-    // Remove existing toolbar
+  /**
+   * Log DOM position information for debugging
+   */
+  private logDOMPosition(element: HTMLElement): void {
+    try {
+      // Get position in parent
+      const parent = element.parentElement;
+      let indexInParent = -1;
+      if (parent) {
+        const siblings = Array.from(parent.children);
+        indexInParent = siblings.indexOf(element);
+      }
+
+      // Get path from root with better formatting
+      const path: string[] = [];
+      let current: HTMLElement | null = element;
+      while (current) {
+        const tag = current.tagName.toLowerCase();
+        const id = current.id ? `#${current.id}` : '';
+        const classes = current.className
+          ? `.${current.className.split(/\s+/).filter(Boolean).join('.')}`
+          : '';
+        path.unshift(`${tag}${id}${classes}`);
+        current = current.parentElement;
+      }
+
+      // Get component model info if available
+      const componentRef = this.selected;
+      const componentId = componentRef ? this.componentRefs.get(componentRef) : undefined;
+      let modelInfo: any = null;
+      if (componentId) {
+        const model = this.componentModelService.getComponent(componentId);
+        if (model) {
+          modelInfo = {
+            id: model.getId(),
+            tagName: model.getTagName(),
+            parent: model.getParent()?.getId() || 'root',
+            children: model.getComponents().map((c: ComponentModel) => c.getId()),
+          };
+        }
+      }
+
+      // Get bounding rect for detailed position info
+      const rect = element.getBoundingClientRect();
+
+      // Format output as a structured object for better readability
+      const positionInfo = {
+        Element: element.tagName.toLowerCase(),
+        ID: element.id || '(none)',
+        Classes: element.className || '(none)',
+        'Index in parent': indexInParent >= 0 ? indexInParent : '(none)',
+        Parent: parent?.tagName.toLowerCase() || '(none)',
+        'Path from root': path.join(' > '),
+        Position: {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+        'Component Model': modelInfo || '(none)',
+      };
+
+      console.group('🔍 [DZ - DOM Position] Selected Element');
+      console.table(positionInfo);
+      console.log('Full Element:', element);
+      console.log('Full Bounding Rect:', rect);
+      if (modelInfo) {
+        console.log('Component Model Details:', modelInfo);
+      }
+      console.groupEnd();
+    } catch (error) {
+      console.error('[DOM Position] Error logging position:', error);
+    }
+  }
+
+  private showToolbar(element: HTMLElement, ref: ComponentRef<any>): void {
+    // Remove existing toolbar FIRST to avoid conflicts
     this.hideToolbar();
 
     try {
       console.log('Creating toolbar component...');
 
       // Create toolbar component in container
-      const toolbarRef = this.container.createComponent(FloatingToolbarComponent);
+      const toolbarRef = this.container.createComponent(FloatingToolbarComponent, {
+        injector: this.injector,
+      });
+
       const label = this.getElementLabel(element);
       console.log('Toolbar label:', label);
 
       toolbarRef.instance.label = label;
       toolbarRef.instance.targetElement = element;
+
+      // Check if can move up (not first element)
+      const elementIndex = this.indexOfRef(ref);
+      toolbarRef.instance.canMoveUp = elementIndex > 0;
+
       toolbarRef.instance.action.subscribe((action: string) => this.handleToolbarAction(action));
 
-      // Trigger change detection
+      // Trigger change detection FIRST to ensure component is fully initialized
       toolbarRef.changeDetectorRef.detectChanges();
-      console.log('Toolbar component created, native element:', toolbarRef.location.nativeElement);
+      console.log('Toolbar component initialized');
 
-      // Get the hostView and native element BEFORE detaching
-      const hostView = toolbarRef.hostView;
+      // Get native element and hostView AFTER change detection
       const nativeElement = toolbarRef.location.nativeElement;
+      const hostView = toolbarRef.hostView;
 
-      // IMPORTANT: Detach from container FIRST before attaching to appRef
-      // This prevents "already attached" error
-      const index = this.container.indexOf(hostView);
-      console.log('Container index of toolbar:', index);
-
-      if (index >= 0) {
-        // Remove from container's DOM first
-        if (nativeElement.parentNode) {
-          nativeElement.parentNode.removeChild(nativeElement);
-        }
-        // Then detach from ViewContainerRef
-        this.container.detach(index);
-        console.log('Toolbar detached from container at index:', index);
-      } else {
-        console.warn('Toolbar not found in container, may already be detached');
-        // Still try to remove from DOM if it exists
-        if (nativeElement.parentNode) {
-          nativeElement.parentNode.removeChild(nativeElement);
-        }
+      // Detach from ViewContainerRef BEFORE attaching to appRef
+      const containerIndex = this.container.indexOf(hostView);
+      if (containerIndex >= 0) {
+        this.container.detach(containerIndex);
+        console.log('Toolbar detached from container at index:', containerIndex);
       }
 
-      // Now attach to appRef and append to body
-      // Check if already attached to avoid error
+      // Attach to ApplicationRef to keep it alive
+      // Use try-catch to handle case where view is already attached
       try {
         this.appRef.attachView(hostView);
         console.log('Toolbar attached to appRef');
-      } catch (attachError) {
-        console.warn('View may already be attached, continuing...', attachError);
+      } catch (attachError: any) {
+        // If view is already attached, that's okay - just log and continue
+        if (attachError?.message?.includes('already attached')) {
+          console.warn('View already attached to appRef, continuing...');
+        } else {
+          console.error('Error attaching view to appRef:', attachError);
+          throw attachError;
+        }
       }
+
+      // Append to body
       document.body.appendChild(nativeElement);
-      console.log('Toolbar appended to body');
+      console.log('Toolbar appended to body, native element:', nativeElement);
+
+      // Force apply fixed positioning styles
+      const hostElement = nativeElement as HTMLElement;
+      hostElement.style.position = 'fixed';
+      hostElement.style.zIndex = '10000';
+      hostElement.style.display = 'block';
+      hostElement.style.pointerEvents = 'auto';
+
+      console.log('Toolbar element styles after force:', {
+        display: window.getComputedStyle(hostElement).display,
+        position: window.getComputedStyle(hostElement).position,
+        visibility: window.getComputedStyle(hostElement).visibility,
+        zIndex: window.getComputedStyle(hostElement).zIndex,
+      });
+
+      // Trigger change detection again after appending to body
+      toolbarRef.changeDetectorRef.detectChanges();
 
       this.toolbarRef = toolbarRef;
 
-      // Add click outside handler to hide toolbar
+      // Create heading toolbar if element is text or heading
+      if (this.isTextOrHeadingElement(element)) {
+        this.showHeadingToolbar(element);
+      }
+
+      // Update position immediately after appending
+      if (toolbarRef.instance && toolbarRef.instance.updatePosition) {
+        toolbarRef.instance.updatePosition();
+        toolbarRef.changeDetectorRef.detectChanges();
+        console.log(
+          'Toolbar position updated immediately:',
+          'right:',
+          toolbarRef.instance.right,
+          'top:',
+          toolbarRef.instance.top
+        );
+      }
+
+      // Update position again after a short delay to ensure DOM is fully ready
+      setTimeout(() => {
+        if (toolbarRef.instance && toolbarRef.instance.updatePosition) {
+          toolbarRef.instance.updatePosition();
+          toolbarRef.changeDetectorRef.detectChanges();
+          console.log(
+            'Toolbar position updated (delayed):',
+            'right:',
+            toolbarRef.instance.right,
+            'top:',
+            toolbarRef.instance.top
+          );
+        }
+      }, 100);
+
+      // Add click outside handler to hide toolbar and deselect
       this.clickOutsideHandler = (e: MouseEvent) => {
         const target = e.target as HTMLElement;
         const toolbarElement = toolbarRef.location.nativeElement;
+        const headingToolbarElement = this.headingToolbarRef
+          ? this.headingToolbarRef.location.nativeElement
+          : null;
 
-        // Don't hide if clicking on toolbar or selected element
+        // Don't hide if clicking on toolbar
+        if (toolbarElement && toolbarElement.contains(target)) {
+          return;
+        }
+
+        // Don't hide if clicking on heading toolbar
+        if (headingToolbarElement && headingToolbarElement.contains(target)) {
+          return;
+        }
+
+        // Don't hide if clicking on selected element or its children
+        if (this.selectedElement && this.selectedElement.contains(target)) {
+          return;
+        }
+
+        // Don't hide if clicking on interactive elements (inputs, buttons, etc.)
         if (
-          toolbarElement.contains(target) ||
-          (this.selectedElement && this.selectedElement.contains(target))
+          target.tagName === 'INPUT' ||
+          target.tagName === 'BUTTON' ||
+          target.tagName === 'SELECT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.closest('input, button, select, textarea')
         ) {
           return;
         }
 
         // Hide toolbar and deselect
-        this.hideToolbar();
-        if (this.selected) {
-          const el = (this.selected.location?.nativeElement || null) as HTMLElement | null;
-          if (el) {
-            el.classList.remove('dz-selected');
-          }
-          this.selected = undefined;
-          this.selectedElement = undefined;
-        }
+        console.log('[DZ] Click outside detected, deselecting...');
+        this.deselect();
       };
 
       // Add listener with a small delay to avoid immediate trigger
       setTimeout(() => {
         if (this.clickOutsideHandler) {
           document.addEventListener('click', this.clickOutsideHandler, true);
+          console.log('[DZ] Click outside handler added');
         }
-      }, 100);
-
-      // Update position after a short delay to ensure DOM is ready
-      setTimeout(() => {
-        if (toolbarRef.instance && toolbarRef.instance.updatePosition) {
-          toolbarRef.instance.updatePosition();
-          toolbarRef.changeDetectorRef.detectChanges();
-          console.log(
-            'Toolbar position updated:',
-            toolbarRef.instance.left,
-            toolbarRef.instance.top
-          );
-        }
-      }, 50);
+      }, 200);
     } catch (error) {
       console.error('Error showing toolbar:', error);
     }
+  }
+
+  /**
+   * Deselect current element and hide toolbar
+   */
+  private deselect(): void {
+    // Remove selection class
+    if (this.selected) {
+      const el = (this.selected.location?.nativeElement || null) as HTMLElement | null;
+      if (el) {
+        el.classList.remove('dz-selected');
+        console.log('[DZ] Removed dz-selected class from element:', el);
+      }
+      this.selected = undefined;
+    }
+    this.selectedElement = undefined;
+
+    // Hide toolbar
+    this.hideToolbar();
+
+    // Clear trait manager
+    this.traitManager.clear();
   }
 
   private hideToolbar(): void {
@@ -1156,18 +2059,193 @@ export class DynamicZone extends CoreBase {
       // Remove click outside handler
       if (this.clickOutsideHandler) {
         document.removeEventListener('click', this.clickOutsideHandler, true);
+        console.log('[DZ] Click outside handler removed');
         this.clickOutsideHandler = undefined;
       }
 
-      // Remove from DOM first
-      if (this.toolbarRef.location.nativeElement.parentNode) {
-        this.toolbarRef.location.nativeElement.parentNode.removeChild(
-          this.toolbarRef.location.nativeElement
+      try {
+        // Detach from ApplicationRef first
+        const hostView = this.toolbarRef.hostView;
+        if (hostView) {
+          this.appRef.detachView(hostView);
+          console.log('Toolbar detached from appRef');
+        }
+
+        // Remove from DOM
+        const nativeElement = this.toolbarRef.location.nativeElement;
+        if (nativeElement && nativeElement.parentNode) {
+          nativeElement.parentNode.removeChild(nativeElement);
+          console.log('Toolbar removed from DOM');
+        }
+
+        // Destroy component
+        this.toolbarRef.destroy();
+        console.log('Toolbar destroyed');
+      } catch (error) {
+        console.error('Error hiding toolbar:', error);
+      } finally {
+        this.toolbarRef = undefined;
+      }
+    }
+
+    // Hide heading toolbar if exists
+    if (this.headingToolbarRef) {
+      try {
+        // Detach from ApplicationRef first
+        const headingHostView = this.headingToolbarRef.hostView;
+        if (headingHostView) {
+          this.appRef.detachView(headingHostView);
+          console.log('Heading toolbar detached from appRef');
+        }
+
+        // Remove from DOM
+        const headingNativeElement = this.headingToolbarRef.location.nativeElement;
+        if (headingNativeElement && headingNativeElement.parentNode) {
+          headingNativeElement.parentNode.removeChild(headingNativeElement);
+          console.log('Heading toolbar removed from DOM');
+        }
+
+        // Destroy component
+        this.headingToolbarRef.destroy();
+        console.log('Heading toolbar destroyed');
+      } catch (error) {
+        console.error('Error hiding heading toolbar:', error);
+      } finally {
+        this.headingToolbarRef = undefined;
+      }
+    }
+  }
+
+  private showHeadingToolbar(element: HTMLElement): void {
+    // Hide existing heading toolbar first
+    if (this.headingToolbarRef) {
+      try {
+        const headingHostView = this.headingToolbarRef.hostView;
+        if (headingHostView) {
+          this.appRef.detachView(headingHostView);
+        }
+        const headingNativeElement = this.headingToolbarRef.location.nativeElement;
+        if (headingNativeElement && headingNativeElement.parentNode) {
+          headingNativeElement.parentNode.removeChild(headingNativeElement);
+        }
+        this.headingToolbarRef.destroy();
+      } catch (error) {
+        console.error('Error hiding existing heading toolbar:', error);
+      } finally {
+        this.headingToolbarRef = undefined;
+      }
+    }
+
+    try {
+      console.log('Creating heading toolbar component...');
+
+      // Create heading toolbar component in container
+      const headingToolbarRef = this.container.createComponent(FloatingToolbarHeadingComponent, {
+        injector: this.injector,
+      });
+
+      headingToolbarRef.instance.targetElement = element;
+
+      // Subscribe to action events
+      headingToolbarRef.instance.action.subscribe((action: string) =>
+        this.handleHeadingToolbarAction(action)
+      );
+
+      // Trigger change detection FIRST to ensure component is fully initialized
+      headingToolbarRef.changeDetectorRef.detectChanges();
+      console.log('Heading toolbar component initialized');
+
+      // Get native element and hostView AFTER change detection
+      const headingNativeElement = headingToolbarRef.location.nativeElement;
+      const headingHostView = headingToolbarRef.hostView;
+
+      // Detach from ViewContainerRef BEFORE attaching to appRef
+      const headingContainerIndex = this.container.indexOf(headingHostView);
+      if (headingContainerIndex >= 0) {
+        this.container.detach(headingContainerIndex);
+        console.log('Heading toolbar detached from container at index:', headingContainerIndex);
+      }
+
+      // Attach to ApplicationRef to keep it alive
+      try {
+        this.appRef.attachView(headingHostView);
+        console.log('Heading toolbar attached to appRef');
+      } catch (attachError: any) {
+        if (attachError?.message?.includes('already attached')) {
+          console.warn('Heading toolbar view already attached to appRef, continuing...');
+        } else {
+          console.error('Error attaching heading toolbar view to appRef:', attachError);
+          throw attachError;
+        }
+      }
+
+      // Append to body
+      document.body.appendChild(headingNativeElement);
+      console.log('Heading toolbar appended to body, native element:', headingNativeElement);
+
+      // Force apply fixed positioning styles
+      const headingHostElement = headingNativeElement as HTMLElement;
+      headingHostElement.style.position = 'fixed';
+      headingHostElement.style.zIndex = '10000';
+      headingHostElement.style.display = 'block';
+      headingHostElement.style.pointerEvents = 'auto';
+
+      // Trigger change detection again after appending to body
+      headingToolbarRef.changeDetectorRef.detectChanges();
+
+      this.headingToolbarRef = headingToolbarRef;
+
+      // Update position immediately after appending
+      if (headingToolbarRef.instance && headingToolbarRef.instance.updatePosition) {
+        headingToolbarRef.instance.updatePosition();
+        headingToolbarRef.changeDetectorRef.detectChanges();
+        console.log(
+          'Heading toolbar position updated immediately:',
+          'left:',
+          headingToolbarRef.instance.left,
+          'top:',
+          headingToolbarRef.instance.top
         );
       }
-      // Destroy component (this will also detach from appRef automatically)
-      this.toolbarRef.destroy();
-      this.toolbarRef = undefined;
+
+      // Update position again after a short delay
+      setTimeout(() => {
+        if (headingToolbarRef.instance && headingToolbarRef.instance.updatePosition) {
+          headingToolbarRef.instance.updatePosition();
+          headingToolbarRef.changeDetectorRef.detectChanges();
+          console.log(
+            'Heading toolbar position updated (delayed):',
+            'left:',
+            headingToolbarRef.instance.left,
+            'top:',
+            headingToolbarRef.instance.top
+          );
+        }
+      }, 100);
+    } catch (headingError) {
+      console.error('Error showing heading toolbar:', headingError);
+    }
+  }
+
+  private handleHeadingToolbarAction(action: string): void {
+    // Handle text formatting actions (bold, italic, underline, strikeThrough)
+    // The actual formatting is already applied in FloatingToolbarHeadingComponent
+    // This method can be used for additional logic if needed
+    console.log('Heading toolbar action:', action);
+
+    // Update the component model if needed
+    if (this.selected && this.selectedElement) {
+      const id = this.componentRefs.get(this.selected);
+      if (id) {
+        // The formatting is already applied to the DOM
+        // We might want to update the model here if needed
+        const model = this.componentModelService.getComponent(id);
+        if (model) {
+          // Update textContent to reflect the formatted HTML
+          const htmlContent = this.selectedElement.innerHTML;
+          // You can update the model here if needed
+        }
+      }
     }
   }
 
@@ -1208,74 +2286,155 @@ export class DynamicZone extends CoreBase {
     return tag.charAt(0).toUpperCase() + tag.slice(1);
   }
 
+  private isTextOrHeadingElement(element: HTMLElement): boolean {
+    const tag = element.tagName.toLowerCase();
+
+    // Check if element itself is a heading or paragraph
+    if (tag.startsWith('h') && tag.length === 2 && /^[1-6]$/.test(tag.charAt(1))) {
+      return true; // h1-h6
+    }
+    if (tag === 'p') {
+      return true; // paragraph
+    }
+
+    // Check for text/heading classes
+    if (element.classList.contains('dz-heading') || element.classList.contains('dz-text')) {
+      return true;
+    }
+
+    // Check for inner textual elements
+    const innerTextual = element.querySelector('h1, h2, h3, h4, h5, h6, p, .dz-heading, .dz-text');
+    if (innerTextual) {
+      return true;
+    }
+
+    return false;
+  }
+
   private handleToolbarAction(action: string): void {
     if (!this.selected || !this.selectedElement) return;
 
     switch (action) {
-      case 'magic':
-        // TODO: Implement magic/AI features
-        console.log('Magic action');
+      case 'ai':
+        // Show heading toolbar when AI button is clicked
+        if (this.isTextOrHeadingElement(this.selectedElement)) {
+          this.showHeadingToolbar(this.selectedElement);
+        }
         break;
       case 'moveUp':
         this.moveUp();
+        // Update canMoveUp after move
+        setTimeout(() => {
+          if (this.toolbarRef && this.selected) {
+            const newIndex = this.indexOfRef(this.selected);
+            this.toolbarRef.instance.canMoveUp = newIndex > 0;
+            this.toolbarRef.changeDetectorRef.detectChanges();
+          }
+        }, 0);
         break;
       case 'move':
-        // TODO: Implement drag to move
-        console.log('Move action');
+        this.enableDragMode();
         break;
       case 'duplicate':
-        this.duplicate();
+        const duplicatedRef = this.duplicate();
+        // Select the duplicated element after a short delay to ensure it's fully rendered
+        if (duplicatedRef) {
+          setTimeout(() => {
+            console.log('[DZ] Selecting duplicated element:', duplicatedRef);
+            this.select(duplicatedRef);
+          }, 50);
+        }
         break;
       case 'delete':
         this.delete();
-        break;
-      case 'more':
-        // TODO: Show more options menu
-        console.log('More action');
         break;
     }
   }
 
   private moveUp(): void {
     if (!this.selected) return;
+    const meta = this.componentMeta.get(this.selected);
+    if (!meta) return;
     const index = this.indexOfRef(this.selected);
     if (index > 0) {
-      this.reorder(index, index - 1);
+      // Get parent ID for undo command
+      const id = this.componentRefs.get(this.selected);
+      if (id) {
+        const model = this.componentModelService.getComponent(id);
+        if (model) {
+          const parent = model.getParent();
+          if (parent) {
+            const parentId = parent.getId();
+            
+            // Create and execute move command with undo support
+            const moveCommand = new MoveCommand(
+              this.componentModelService,
+              parentId,
+              index,
+              index - 1
+            );
+            
+            // Execute command and add to undo stack
+            this.undoManager.execute(moveCommand, { label: 'Move Up' });
+            
+            // Reorder in view
+            this.reorderWithinContainer(meta.container, index, index - 1);
+          }
+        }
+      }
     }
   }
 
-  private duplicate(): void {
-    if (!this.selected) return;
+  private duplicate(): ComponentRef<any> | null {
+    if (!this.selected) return null;
     const el = (this.selected.location?.nativeElement || null) as HTMLElement | null;
-    if (!el) return;
+    if (!el) return null;
 
     const id = this.componentRefs.get(this.selected);
-    if (!id) return;
+    if (!id) return null;
 
     const model = this.componentModelService.getComponent(id);
-    if (!model) return;
+    if (!model) return null;
 
     const parent = model.getParent();
     const parentId = parent?.getId() || '';
     const index = this.indexOfRef(this.selected);
+    const meta = this.componentMeta.get(this.selected);
+    const container = meta?.container ?? this.container;
 
-    // Clone component model using toJSON
-    const definition = model.toJSON();
-    // Remove id to generate new one
-    if (definition.attributes) {
-      delete definition.attributes['id'];
-    }
-    const cloned = this.componentModelService.createComponent(definition, parentId);
+    // Create and execute duplicate command with undo support
+    const duplicateCommand = new DuplicateCommand(
+      this.componentModelService,
+      id,
+      parentId,
+      index + 1
+    );
+    
+    this.undoManager.execute(duplicateCommand, { label: 'Duplicate Component' });
+
+    // Get the cloned component from model
+    const parentModel = this.componentModelService.getComponent(parentId);
+    const cloned = parentModel?.getComponents()[index + 1];
 
     // Create component instance
     const componentType = this.registry[model.getTagName()] || this.nextComponent;
-    if (componentType) {
+    if (componentType && cloned) {
+      this.setContainerRef(container);
       const clonedRef = this.insertWidget(componentType, index + 1) as ComponentRef<any>;
       if (clonedRef) {
-        this.componentRefs.set(clonedRef, cloned.getId());
+        const containerRefs = this.getContainerRefs(container);
+        const position = Math.min(index + 1, containerRefs.length);
+        this.trackComponentRef(clonedRef, container, {
+          parentId: parentId || undefined,
+          componentId: cloned.getId(),
+          insertIndex: position,
+        });
         this.registerDraggable(clonedRef);
+        console.log('[DZ] Duplicated element, new ref:', clonedRef);
+        return clonedRef;
       }
     }
+    return null;
   }
 
   private delete(): void {
@@ -1288,15 +2447,34 @@ export class DynamicZone extends CoreBase {
 
     // Remove from view
     const index = this.indexOfRef(this.selected);
-    const vcr = this.getViewContainerRef();
-    if (vcr && index >= 0) {
-      vcr.remove(index);
-      this.refs.splice(index, 1);
+    const meta = this.componentMeta.get(this.selected);
+    const container = meta?.container ?? this.container;
+    if (container && index >= 0) {
+      container.remove(index);
       this.componentRefs.delete(this.selected);
       this.selected.destroy();
       this.selected = undefined;
+      this.selectedElement = undefined;
       this.hideToolbar();
     }
+  }
+
+  private enableDragMode(): void {
+    if (!this.selected || !this.selectedElement) return;
+
+    // Element đã có draggable = 'true' từ registerDraggable
+    // Chỉ cần log để user biết có thể kéo thả
+    console.log('Drag mode enabled - bạn có thể kéo thả element này');
+
+    // Có thể thêm visual indicator nếu cần
+    this.selectedElement.style.cursor = 'move';
+
+    // Remove cursor after a delay
+    setTimeout(() => {
+      if (this.selectedElement) {
+        this.selectedElement.style.cursor = '';
+      }
+    }, 2000);
   }
 
   private applyInlineEditDirective(element: HTMLElement): void {

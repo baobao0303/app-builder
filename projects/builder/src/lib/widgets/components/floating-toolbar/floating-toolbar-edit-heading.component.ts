@@ -12,35 +12,17 @@ import {
 import { CommonModule } from '@angular/common';
 
 @Component({
-  selector: 'app-floating-toolbar',
+  selector: 'app-floating-toolbar-edit-heading',
   standalone: true,
   imports: [CommonModule],
   encapsulation: ViewEncapsulation.None,
   template: `
-    <div class="floating-toolbar" [style.right.px]="right" [style.top.px]="top">
+    <div class="floating-toolbar" [style.left.px]="left" [style.top.px]="top">
       <div class="toolbar-content">
         <span class="toolbar-label">{{ label }}</span>
         <div class="toolbar-actions">
-          <button class="toolbar-btn" (click)="actitonAI()" title="AI">
-            <i class="pi pi-sparkles"></i>
-          </button>
-          <button
-            class="toolbar-btn"
-            [class.disabled]="!canMoveUp"
-            [disabled]="!canMoveUp"
-            (click)="actitonMoveUp()"
-            title="Move Up"
-          >
-            <i class="pi pi-arrow-up"></i>
-          </button>
-          <button class="toolbar-btn" (click)="actitonMove()" title="Move">
-            <i class="pi pi-arrows-alt"></i>
-          </button>
-          <button class="toolbar-btn" (click)="actitonDuplicate()" title="Duplicate">
-            <i class="pi pi-copy"></i>
-          </button>
-          <button class="toolbar-btn" (click)="actitonDelete()" title="Delete">
-            <i class="pi pi-trash"></i>
+          <button class="toolbar-btn" (click)="actitonAI()" title="Edit">
+            <i class="pi pi-pencil"></i>
           </button>
         </div>
       </div>
@@ -121,7 +103,7 @@ import { CommonModule } from '@angular/common';
     `,
   ],
 })
-export class FloatingToolbarComponent implements OnInit, OnDestroy, AfterViewInit {
+export class FloatingToolbarEditHeadingComponent implements OnInit, OnDestroy, AfterViewInit {
   @Input() targetElement?: HTMLElement;
   @Input() label = 'Element';
   @Input() canMoveUp = true;
@@ -129,7 +111,6 @@ export class FloatingToolbarComponent implements OnInit, OnDestroy, AfterViewIni
 
   left = 0;
   top = 0;
-  right = 0;
   private updatePositionInterval?: number;
 
   ngOnInit(): void {
@@ -156,34 +137,16 @@ export class FloatingToolbarComponent implements OnInit, OnDestroy, AfterViewIni
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
     const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
 
-    // Position toolbar ở bên phải element
-    this.top = rect.top + scrollTop - 40;
-    // Tính right từ right edge của viewport
-    this.right = window.innerWidth - rect.right - scrollLeft; // 8px margin từ right edge
+    // Position toolbar ở dưới bên trái của element
+    this.top = rect.bottom + scrollTop + 4; // 4px margin từ bottom
+    this.left = rect.left + scrollLeft; // Align với left edge
   }
 
   onAction(action: string): void {
     this.action.emit(action);
   }
 
-  //Attributes
   actitonAI(): void {
     this.action.emit('ai');
-  }
-
-  actitonMoveUp(): void {
-    this.action.emit('moveUp');
-  }
-
-  actitonMove(): void {
-    this.action.emit('move');
-  }
-
-  actitonDuplicate(): void {
-    this.action.emit('duplicate');
-  }
-
-  actitonDelete(): void {
-    this.action.emit('delete');
   }
 }

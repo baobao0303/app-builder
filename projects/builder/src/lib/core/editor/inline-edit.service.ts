@@ -105,12 +105,14 @@ export class InlineEditService {
 
   private createClickHandler(element: HTMLElement): (e: MouseEvent) => void {
     return (e: MouseEvent) => {
-      if (e.target === element) {
+      // Allow editing when clicking on the element itself or its text content
+      const target = e.target as HTMLElement;
+      if (target === element || target.parentElement === element || element.contains(target)) {
         // Don't stop propagation immediately - let select() be called first
         // Use setTimeout to allow select() to complete
         setTimeout(() => {
           this.startEditing(element);
-        }, 0);
+        }, 100);
       }
     };
   }

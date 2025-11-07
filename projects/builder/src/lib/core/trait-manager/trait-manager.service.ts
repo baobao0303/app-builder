@@ -96,6 +96,16 @@ export class TraitManagerService {
     if (!this.selectedTarget) return;
     // Apply attribute directly on HTMLElement style or attributes
     const target: any = this.selectedTarget;
+
+    // Debug log for flexDirection
+    if (name === 'flexDirection') {
+      console.log('[TraitManager] Updating flexDirection:', {
+        value,
+        targetTagName: target.tagName,
+        targetClassName: target.className,
+        hasRowInner: !!target.querySelector('.row-inner'),
+      });
+    }
     if (target instanceof HTMLElement) {
       // Content editing for text nodes
       if (name === 'textContent') {
@@ -216,6 +226,113 @@ export class TraitManagerService {
         }
         return;
       }
+      // Special handling for flexDirection on row components
+      // Instead of setting style, toggle class between row/column
+      if (name === 'flexDirection') {
+        // Helper function to find the container div (row.dz-row or column.dz-column)
+        const findContainerDiv = (element: HTMLElement): HTMLElement | null => {
+          // If target is app-row, find .row.dz-row or .column.dz-column inside it
+          if (element.tagName?.toLowerCase() === 'app-row') {
+            const container = element.querySelector(
+              '.row.dz-row, .column.dz-column, .dz-row, .dz-column'
+            ) as HTMLElement | null;
+            return container;
+          }
+          // If target itself is the container
+          if (
+            element.classList.contains('row') ||
+            element.classList.contains('dz-row') ||
+            element.classList.contains('column') ||
+            element.classList.contains('dz-column')
+          ) {
+            return element;
+          }
+          return null;
+        };
+
+        // Helper function to toggle classes between row and column
+        const toggleRowColumnClass = (container: HTMLElement, direction: string): void => {
+          const isColumn = direction === 'column' || direction === 'column-reverse';
+          const isRow = direction === 'row' || direction === 'row-reverse' || !direction;
+
+          if (isColumn) {
+            // Change from row to column
+            container.classList.remove('row', 'dz-row');
+            container.classList.add('column', 'dz-column');
+            console.log('[TraitManager] Changed class from row.dz-row to column.dz-column');
+          } else if (isRow) {
+            // Change from column to row
+            container.classList.remove('column', 'dz-column');
+            container.classList.add('row', 'dz-row');
+            console.log('[TraitManager] Changed class from column.dz-column to row.dz-row');
+          }
+
+          // Also toggle inner element class
+          const inner = container.querySelector('.row-inner, .column-inner') as HTMLElement | null;
+          if (inner) {
+            if (isColumn) {
+              inner.classList.remove('row-inner');
+              inner.classList.add('column-inner');
+            } else if (isRow) {
+              inner.classList.remove('column-inner');
+              inner.classList.add('row-inner');
+            }
+          }
+
+          // Apply flex-direction style to inner element
+          if (inner) {
+            inner.style.setProperty('flex-direction', String(direction || 'row'), 'important');
+            inner.offsetHeight; // Force reflow
+          }
+        };
+
+        // Priority 1: If target is app-row, find container div inside it
+        if (target.tagName?.toLowerCase() === 'app-row') {
+          const container = findContainerDiv(target);
+          if (container) {
+            console.log('[TraitManager] Toggling class for container (app-row):', value, container);
+            toggleRowColumnClass(container, value);
+            return;
+          }
+        }
+
+        // Priority 2: If target is the container div itself
+        const container = findContainerDiv(target);
+        if (container) {
+          console.log('[TraitManager] Toggling class for container (direct):', value, container);
+          toggleRowColumnClass(container, value);
+          return;
+        }
+
+        // Priority 3: Check parent elements for app-row
+        let currentParent = target.parentElement;
+        let depth = 0;
+        while (currentParent && depth < 10) {
+          if (currentParent.tagName?.toLowerCase() === 'app-row') {
+            const parentContainer = findContainerDiv(currentParent);
+            if (parentContainer) {
+              console.log(
+                '[TraitManager] Toggling class for container (in parent app-row):',
+                value,
+                parentContainer
+              );
+              toggleRowColumnClass(parentContainer, value);
+              return;
+            }
+          }
+          currentParent = currentParent.parentElement;
+          depth++;
+        }
+
+        // Fallback: Apply flex-direction style directly to target
+        console.warn(
+          '[TraitManager] Could not find container div, applying flexDirection style to target:',
+          target
+        );
+        (target.style as any).flexDirection = String(value || 'row');
+        return;
+      }
+
       // Common mappings
       const styleMap: Record<string, string> = {
         display: 'display',

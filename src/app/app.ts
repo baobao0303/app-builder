@@ -1,3 +1,4 @@
+import { ImageComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs/components/basics/image/image.component';
 import { Component, Type, ViewChild, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import {
@@ -32,7 +33,6 @@ import { Banner } from '../../projects/builder/src/lib/widgets/components/banner
 import { RowComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs/components/basics/row/row';
 import { ColumnComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs/components/basics/column/column';
 import { NavbarComponent } from '../../projects/builder/src/lib/widgets/ToolBoxs/components/extras/navbar/navbar.component';
-import { ImageComponent } from '../../projects/builder/src/lib/widgets/components/image/image.component';
 import { ListComponent } from '../../projects/builder/src/lib/widgets/components/list/list.component';
 import { CardComponent } from '../../projects/builder/src/lib/widgets/components/card/card.component';
 import { collectUsedClasses } from '../../projects/builder/src/lib/core/css/collect-used-classes';

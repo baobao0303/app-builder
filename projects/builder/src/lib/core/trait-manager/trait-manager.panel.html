@@ -76,6 +76,15 @@
             <option value="none">None</option>
           </select>
         </div>
+        <div class="tm-field tm-col-2" *ngIf="isFlexDisplay">
+          <label>Hướng (Direction)</label>
+          <select [(ngModel)]="flexDirection" (change)="setStyle('flexDirection', flexDirection)">
+            <option value="row">Ngang (Row)</option>
+            <option value="column">Dọc (Column)</option>
+            <option value="row-reverse">Ngang đảo (Row Reverse)</option>
+            <option value="column-reverse">Dọc đảo (Column Reverse)</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -140,55 +149,54 @@
           />
         </div>
       </div>
-
-      <!-- Color group -->
-      <div class="tm-section">
-        <button class="tm-section-header" type="button">Color</button>
-        <div class="tm-grid-2 tm-color-grid">
-          <div class="tm-field">
-            <label>Text Color</label>
-            <div class="tm-color-row">
-              <p-colorpicker
-                [(ngModel)]="color"
-                (ngModelChange)="setStyle('color', $event)"
-              ></p-colorpicker>
-              <div class="tm-color-preview" [style.background]="color"></div>
-            </div>
-          </div>
-          <div class="tm-field">
-            <label>Background</label>
-            <div class="tm-color-row">
-              <p-colorpicker
-                [(ngModel)]="backgroundColor"
-                (ngModelChange)="setStyle('backgroundColor', $event)"
-              />
-            </div>
+    </div>
+    <!-- Color group -->
+    <div class="tm-section">
+      <button class="tm-section-header" type="button">Color</button>
+      <div class="tm-grid-2 tm-color-grid">
+        <div class="tm-field">
+          <label>Text Color</label>
+          <div class="tm-color-row">
+            <p-colorpicker
+              [(ngModel)]="color"
+              (ngModelChange)="setStyle('color', $event)"
+            ></p-colorpicker>
+            <div class="tm-color-preview" [style.background]="color"></div>
           </div>
         </div>
-
-        <!-- Attributes group (id, class) -->
-        <div class="tm-section">
-          <button class="tm-section-header" type="button">Attributes</button>
-          <div class="tm-grid-2">
-            <div class="tm-field">
-              <label>Id</label>
-              <input
-                class="tm-input"
-                [ngModel]="selectedId"
-                (ngModelChange)="setStyle('id', $event)"
-                [disabled]="!selected"
-              />
-            </div>
-            <div class="tm-field">
-              <label>Class</label>
-              <input
-                class="tm-input"
-                [ngModel]="selectedClass"
-                (ngModelChange)="setStyle('class', $event)"
-                [disabled]="!selected"
-              />
-            </div>
+        <div class="tm-field">
+          <label>Background</label>
+          <div class="tm-color-row">
+            <p-colorpicker
+              [(ngModel)]="backgroundColor"
+              (ngModelChange)="setStyle('backgroundColor', $event)"
+            />
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Attributes group (id, class) -->
+    <div class="tm-section">
+      <button class="tm-section-header" type="button">Attributes</button>
+      <div class="tm-grid-2">
+        <div class="tm-field">
+          <label>Id</label>
+          <input
+            class="tm-input"
+            [ngModel]="selectedId"
+            (ngModelChange)="setStyle('id', $event)"
+            [disabled]="!selected"
+          />
+        </div>
+        <div class="tm-field">
+          <label>Class</label>
+          <input
+            class="tm-input"
+            [ngModel]="selectedClass"
+            (ngModelChange)="setStyle('class', $event)"
+            [disabled]="!selected"
+          />
         </div>
       </div>
     </div>
