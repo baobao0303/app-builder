@@ -19,6 +19,9 @@ import { RowComponent } from '../../../projects/builder/src/lib/widgets/ToolBoxs
 import { SectionComponent } from '../../../projects/builder/src/lib/widgets/ToolBoxs/components/basics/section/section';
 import { TextComponent } from '../../../projects/builder/src/lib/widgets/ToolBoxs/components/basics/text/text';
 import { NavbarComponent } from '../../../projects/builder/src/lib/widgets/ToolBoxs/components/extras/navbar/navbar.component';
+import { MainComponent } from '../../../projects/builder/src/lib/widgets/ToolBoxs/components/basics/main/main';
+import { HeaderComponent } from '../../../projects/builder/src/lib/widgets/ToolBoxs/components/layouts/header/header';
+import { FooterComponent } from '../../../projects/builder/src/lib/widgets/ToolBoxs/components/layouts/footer/footer';
 
 @Injectable()
 export class AppBuilderContextService implements BuilderContextConfig {
@@ -30,7 +33,7 @@ export class AppBuilderContextService implements BuilderContextConfig {
     navbar: NavbarComponent,
     row: RowComponent,
     column: ColumnComponent,
-    '1-columns': RowComponent,
+    '1-columns': ColumnComponent,
     '2-columns': RowComponent,
     '3-columns': RowComponent,
     '2-columns-3-7': RowComponent,
@@ -42,6 +45,9 @@ export class AppBuilderContextService implements BuilderContextConfig {
     text: TextComponent,
     voucher: VoucherComponent,
     'voucher-carousel': VoucherCarouselComponent,
+    main: MainComponent,
+    header: HeaderComponent,
+    footer: FooterComponent,
   };
 
   readonly componentDefinitions: Record<string, ComponentDefinition> = {
@@ -63,6 +69,272 @@ export class AppBuilderContextService implements BuilderContextConfig {
       tagName: 'section',
       classes: ['p-4', 'bg-slate-50', 'border', 'border-slate-300', 'rounded'],
       components: [],
+    },
+    header: {
+      tagName: 'header',
+      classes: ['header', 'dz-header'],
+      components: [
+        {
+          tagName: 'div',
+          classes: ['header-content', 'flex', 'items-center', 'justify-between', 'p-4', 'bg-white', 'shadow-sm'],
+          components: [
+            {
+              tagName: 'div',
+              classes: ['header-brand', 'flex', 'items-center'],
+              components: [
+                {
+                  tagName: 'a',
+                  attributes: { href: '#' },
+                  classes: ['brand-link', 'text-xl', 'font-bold', 'text-gray-900'],
+                  content: 'Your Brand',
+                },
+              ],
+            },
+            {
+              tagName: 'nav',
+              classes: ['header-nav', 'flex', 'items-center', 'space-x-6'],
+              components: [
+                {
+                  tagName: 'a',
+                  attributes: { href: '#' },
+                  classes: ['nav-link', 'text-gray-700'],
+                  content: 'Home',
+                },
+                {
+                  tagName: 'a',
+                  attributes: { href: '#' },
+                  classes: ['nav-link', 'text-gray-700'],
+                  content: 'About',
+                },
+                {
+                  tagName: 'a',
+                  attributes: { href: '#' },
+                  classes: ['nav-link', 'text-gray-700'],
+                  content: 'Services',
+                },
+                {
+                  tagName: 'a',
+                  attributes: { href: '#' },
+                  classes: ['nav-link', 'text-gray-700'],
+                  content: 'Contact',
+                },
+              ],
+            },
+            {
+              tagName: 'div',
+              classes: ['header-actions'],
+              components: [
+                {
+                  tagName: 'button',
+                  classes: ['cta-button', 'px-4', 'py-2', 'bg-blue-600', 'text-white', 'rounded-md'],
+                  content: 'Get Started',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    footer: {
+      tagName: 'footer',
+      classes: ['footer', 'dz-footer'],
+      components: [
+        {
+          tagName: 'div',
+          classes: ['footer-top', 'grid', 'grid-cols-1', 'md:grid-cols-4', 'gap-8', 'p-8', 'bg-gray-900', 'text-white'],
+          components: [
+            {
+              tagName: 'div',
+              classes: ['footer-column'],
+              components: [
+                {
+                  tagName: 'h3',
+                  classes: ['footer-title', 'text-lg', 'font-bold', 'mb-4'],
+                  content: 'About Us',
+                },
+                {
+                  tagName: 'p',
+                  classes: ['footer-text', 'text-gray-400', 'text-sm', 'mb-4'],
+                  content: 'Your company description goes here.',
+                },
+              ],
+            },
+            {
+              tagName: 'div',
+              classes: ['footer-column'],
+              components: [
+                {
+                  tagName: 'h3',
+                  classes: ['footer-title', 'text-lg', 'font-bold', 'mb-4'],
+                  content: 'Quick Links',
+                },
+                {
+                  tagName: 'ul',
+                  classes: ['footer-links', 'space-y-2'],
+                  components: [
+                    {
+                      tagName: 'li',
+                      components: [
+                        {
+                          tagName: 'a',
+                          attributes: { href: '#' },
+                          classes: ['footer-link', 'text-gray-400'],
+                          content: 'Home',
+                        },
+                      ],
+                    },
+                    {
+                      tagName: 'li',
+                      components: [
+                        {
+                          tagName: 'a',
+                          attributes: { href: '#' },
+                          classes: ['footer-link', 'text-gray-400'],
+                          content: 'About',
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          tagName: 'div',
+          classes: ['footer-bottom', 'border-t', 'border-gray-800', 'p-4', 'bg-gray-950'],
+          components: [
+            {
+              tagName: 'div',
+              classes: ['footer-bottom-content', 'flex', 'justify-between', 'items-center'],
+              components: [
+                {
+                  tagName: 'p',
+                  classes: ['footer-copyright', 'text-gray-400', 'text-sm'],
+                  content: '© 2024 Your Company. All rights reserved.',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    main: {
+      tagName: 'main',
+      attributes: { id: 'site-content' },
+      classes: ['main', 'dz-main'],
+      components: [
+        {
+          tagName: 'h1',
+          classes: ['main-title', 'dz-heading', 'text-3xl', 'font-bold', 'text-center', 'mb-4'],
+          content: 'Begin each day by telling yourself',
+        },
+        {
+          tagName: 'div',
+          classes: [
+            'main-metadata',
+            'flex',
+            'items-center',
+            'justify-center',
+            'gap-4',
+            'text-sm',
+            'text-gray-600',
+            'mb-6',
+          ],
+          components: [
+            {
+              tagName: 'div',
+              classes: ['metadata-item', 'flex', 'items-center', 'gap-1'],
+              components: [
+                {
+                  tagName: 'span',
+                  classes: ['metadata-icon'],
+                  content: '👤',
+                },
+                {
+                  tagName: 'span',
+                  content: 'By admin',
+                },
+              ],
+            },
+            {
+              tagName: 'div',
+              classes: ['metadata-item', 'flex', 'items-center', 'gap-1'],
+              components: [
+                {
+                  tagName: 'span',
+                  classes: ['metadata-icon'],
+                  content: '📅',
+                },
+                {
+                  tagName: 'span',
+                  content: 'December 31, 2020',
+                },
+              ],
+            },
+            {
+              tagName: 'div',
+              classes: ['metadata-item', 'flex', 'items-center', 'gap-1'],
+              components: [
+                {
+                  tagName: 'span',
+                  classes: ['metadata-icon'],
+                  content: '💬',
+                },
+                {
+                  tagName: 'span',
+                  content: '0 Comments',
+                },
+              ],
+            },
+          ],
+        },
+        {
+          tagName: 'div',
+          classes: ['main-image-wrapper', 'mb-6'],
+          components: [
+            {
+              tagName: 'div',
+              classes: ['dz-image', 'image-placeholder'],
+              style: {
+                width: '100%',
+                minHeight: '300px',
+                background: '#f0f0f0',
+                border: '2px dashed #cbd5e1',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#64748b',
+              },
+              content: 'Feature Image',
+            },
+          ],
+        },
+        {
+          tagName: 'div',
+          classes: ['main-content'],
+          components: [
+            {
+              tagName: 'p',
+              classes: ['main-text', 'dz-text', 'text-base', 'text-gray-700', 'mb-4'],
+              content: 'Begin each day by telling yourself:',
+            },
+            {
+              tagName: 'blockquote',
+              classes: [
+                'main-quote',
+                'text-lg',
+                'italic',
+                'text-gray-600',
+                'border-l-4',
+                'border-blue-500',
+                'pl-4',
+              ],
+              content: '"Today I shall be meeting with interference. inaratitude."',
+            },
+          ],
+        },
+      ],
     },
     a: {
       tagName: 'div',
@@ -196,16 +468,9 @@ export class AppBuilderContextService implements BuilderContextConfig {
     },
     '1-columns': {
       tagName: 'div',
-      attributes: { 'data-widget': 'row' },
-      classes: ['row'],
-      components: [
-        {
-          tagName: 'div',
-          attributes: { 'data-widget': 'column' },
-          classes: ['column'],
-          components: [],
-        },
-      ],
+      attributes: { 'data-widget': 'column' },
+      classes: ['column'],
+      components: [],
     },
     '2-columns': {
       tagName: 'div',

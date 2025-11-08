@@ -1,4 +1,4 @@
-import { Component, Type, ViewChild, signal } from '@angular/core';
+import { Component, Type, ViewChild, signal, OnInit, HostListener } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import {
   DynamicZone,
@@ -24,7 +24,10 @@ import {
   BuilderContextService,
   BUILDER_CONTEXT,
 } from 'builder';
-import { TraitManagerPanelComponent } from '../../projects/builder/src/lib/core/trait-manager/trait-manager.panel';
+import { NavigationComponent } from '../../projects/builder/src/lib/core/navigation/navigation.component';
+import { SettingsPanelComponent } from '../../projects/builder/src/lib/core/settings-panel/settings-panel.component';
+import { FloatingPanelComponent } from '../../projects/builder/src/lib/widgets/floating-panel/floating-panel.component';
+import { DownloadModalComponent } from '../../projects/builder/src/lib/widgets/modals/download-modal/download-modal.component';
 import { collectUsedClasses } from '../../projects/builder/src/lib/core/css/collect-used-classes';
 import { purgeTailwindCss } from '../../projects/builder/src/lib/core/css/purge-tailwind';
 
@@ -37,14 +40,17 @@ import { purgeTailwindCss } from '../../projects/builder/src/lib/core/css/purge-
     NavigatorPanelComponent,
     BlockManagerPanelComponent,
     AssetsPanelComponent,
-    TraitManagerPanelComponent,
+    SettingsPanelComponent,
     ModalHostComponent,
     DropIndicatorComponent,
+    NavigationComponent,
+    FloatingPanelComponent,
+    DownloadModalComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
-export class App {
+export class App implements OnInit {
   protected readonly title = signal('Page Builder');
 
   @ViewChild('dz', { static: false })
@@ -57,19 +63,43 @@ export class App {
   // UI State
   protected activePanel: 'blocks' | 'navigator' | 'assets' | 'properties' = 'blocks';
   protected blocks: BlockModel[] = [];
+  protected showNavigatorFloating = signal(true); // Always show floating navigator
+  protected initialNavigatorX = signal(0);
+  protected initialNavigatorY = signal(0);
+  protected isDragDisabled = signal(false); // Track drag mode
+  protected isLeftSidebarHidden = signal(false); // Track left sidebar visibility
+  protected isFullscreen = signal(false); // Track fullscreen state
+  protected showDownloadModal = signal(false);
 
   // Zoom State
   protected zoomLevel = signal(100);
   protected showZoomMenu = signal(false);
   protected zoomLevels = [25, 50, 75, 100, 125, 150, 200, 300, 400];
 
+  // Pan State (for canvas movement)
+  protected panX = signal(0);
+  protected panY = signal(0);
+  protected isPanning = signal(false);
+  private panStartX = 0;
+  private panStartY = 0;
+  private panStartPanX = 0;
+  private panStartPanY = 0;
+  private isSpacePressed = false;
+
+  // Device/Viewport State
+  protected activeDevice = signal<'mobile' | 'tablet' | 'desktop'>('desktop');
+  protected deviceSizes = {
+    mobile: { width: 375, height: 667, name: 'Mobile' },
+    tablet: { width: 768, height: 1024, name: 'Tablet' },
+    desktop: { width: null, height: null, name: 'Desktop' }, // null = full width
+  };
+
   // Sidebar widths (percent)
-  protected leftWidth = signal(15);
-  protected rightWidth = signal(25);
+  protected leftWidth = signal(20); // 2 parts out of 10 (20%)
+  protected rightWidth = signal(25); // Not used anymore, kept for compatibility
   protected centerWidth(): number {
     const l = this.leftWidth();
-    const r = this.rightWidth();
-    return Math.max(0, 100 - l - r);
+    return Math.max(0, 100 - l); // No right sidebar, so only subtract left width
   }
 
   // Resizer drag state
@@ -77,6 +107,13 @@ export class App {
   private layoutRoot?: HTMLElement;
   private startX = 0;
   private startRightWidth = 0;
+
+  // Left Resizer drag state
+  protected isDraggingLeft = signal(false);
+  protected ghostLeftPosition = signal(0);
+  private startLeftWidth = 0;
+  private leftSidebarVisible = signal(true);
+  private rightSidebarVisible = signal(true);
 
   constructor(
     private editorService: EditorService,
@@ -99,6 +136,43 @@ export class App {
     this.initDefaults();
     this.registerCommands();
     this.bindKeymaps();
+  }
+
+  ngOnInit(): void {
+    this.calculateNavigatorPosition();
+
+    // Listen for fullscreen changes
+    document.addEventListener('fullscreenchange', () => {
+      this.isFullscreen.set(!!document.fullscreenElement);
+    });
+    document.addEventListener('webkitfullscreenchange', () => {
+      this.isFullscreen.set(!!(document as any).webkitFullscreenElement);
+    });
+    document.addEventListener('msfullscreenchange', () => {
+      this.isFullscreen.set(!!(document as any).msFullscreenElement);
+    });
+  }
+
+  @HostListener('window:resize')
+  onResize(): void {
+    this.calculateNavigatorPosition();
+  }
+
+  private calculateNavigatorPosition(): void {
+    const panelWidth = 320; // From floating-panel.component.ts
+    const panelHeight = 500; // Approximate height for vertical centering
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Position on the right, with a 20px margin
+    const x = viewportWidth - panelWidth - 20;
+
+    // Vertically center
+    const y = Math.max(0, (viewportHeight - panelHeight) / 2);
+
+    this.initialNavigatorX.set(x);
+    this.initialNavigatorY.set(y);
   }
 
   // Called from template once wrapper renders
@@ -137,6 +211,47 @@ export class App {
     } else {
       this.rightWidth.set(clamped);
     }
+  };
+
+  // Left resizer handlers
+  protected startDragLeft(event: MouseEvent): void {
+    if (!this.layoutRoot) {
+      const el = event.currentTarget as HTMLElement | null;
+      this.layoutRoot = (el && el.closest('.builder-layout')) as HTMLElement | undefined;
+    }
+    this.isDraggingLeft.set(true);
+    this.startX = event.clientX;
+    this.startLeftWidth = this.leftWidth();
+    this.ghostLeftPosition.set(event.clientX);
+    document.addEventListener('mousemove', this.onDragLeft);
+    document.addEventListener('mouseup', this.stopDragLeft);
+    event.preventDefault();
+  }
+
+  private onDragLeft = (event: MouseEvent) => {
+    if (!this.isDraggingLeft() || !this.layoutRoot) return;
+    this.ghostLeftPosition.set(event.clientX);
+  };
+
+  private stopDragLeft = (event: MouseEvent) => {
+    if (!this.isDraggingLeft() || !this.layoutRoot) return;
+
+    const rect = this.layoutRoot.getBoundingClientRect();
+    const finalX = event.clientX;
+    const total = rect.width;
+    const newWidthPercent = (finalX / total) * 100;
+    const clamped = Math.min(45, Math.max(10, newWidthPercent));
+    const minCenter = 20;
+
+    if (100 - this.rightWidth() - clamped < minCenter) {
+      this.leftWidth.set(100 - this.rightWidth() - minCenter);
+    } else {
+      this.leftWidth.set(clamped);
+    }
+
+    this.isDraggingLeft.set(false);
+    document.removeEventListener('mousemove', this.onDragLeft);
+    document.removeEventListener('mouseup', this.stopDragLeft);
   };
 
   private stopDragRight = () => {
@@ -508,6 +623,10 @@ export class App {
     this.activePanel = panel;
   }
 
+  protected closeNavigatorFloating(): void {
+    this.showNavigatorFloating.set(false);
+  }
+
   private registerCommands(): void {
     this.commandManager.register({
       id: 'open-assets',
@@ -537,6 +656,94 @@ export class App {
     this.keymaps.bind('ctrl+minus', () => this.zoomOut());
   }
 
+  protected onToggleLeftSidebar(): void {
+    this.isLeftSidebarHidden.update((v) => !v);
+    this.leftSidebarVisible.update((v) => !v);
+    this.leftWidth.set(this.leftSidebarVisible() ? 25 : 0);
+  }
+
+  protected onToggleRightSidebar(): void {
+    this.rightSidebarVisible.update((v) => !v);
+    this.rightWidth.set(this.rightSidebarVisible() ? 25 : 0);
+  }
+
+  protected onToggleDragMode(): void {
+    this.isDragDisabled.update((v) => !v);
+    // Notify dynamic zone to disable/enable dragging
+    if (this.dz) {
+      // We'll need to add a method to DynamicZone to disable dragging
+      console.log('Drag mode toggled:', this.isDragDisabled() ? 'disabled' : 'enabled');
+    }
+  }
+
+  protected onDeviceChange(device: 'mobile' | 'tablet' | 'desktop'): void {
+    this.activeDevice.set(device);
+    console.log('Device view changed to:', device);
+  }
+
+  // Get viewport dimensions based on active device
+  protected getViewportWidth(): number | null {
+    const device = this.activeDevice();
+    const size = this.deviceSizes[device];
+    return size.width;
+  }
+
+  protected getViewportHeight(): number | null {
+    const device = this.activeDevice();
+    const size = this.deviceSizes[device];
+    return size.height;
+  }
+
+  protected async onToggleFullscreen(): Promise<void> {
+    try {
+      const isCurrentlyFullscreen = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).msFullscreenElement
+      );
+
+      if (!isCurrentlyFullscreen) {
+        // Enter fullscreen
+        if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        } else if ((document.documentElement as any).webkitRequestFullscreen) {
+          await (document.documentElement as any).webkitRequestFullscreen();
+        } else if ((document.documentElement as any).msRequestFullscreen) {
+          await (document.documentElement as any).msRequestFullscreen();
+        }
+        // State will be updated by the event listener
+      } else {
+        // Exit fullscreen
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          await (document as any).webkitExitFullscreen();
+        } else if ((document as any).msExitFullscreen) {
+          await (document as any).msExitFullscreen();
+        }
+        // State will be updated by the event listener
+      }
+    } catch (error) {
+      console.error('Fullscreen error:', error);
+      // Revert state if fullscreen failed
+      this.isFullscreen.set(
+        !!(
+          document.fullscreenElement ||
+          (document as any).webkitFullscreenElement ||
+          (document as any).msFullscreenElement
+        )
+      );
+    }
+  }
+
+  protected onToggleNavigator(): void {
+    this.showNavigatorFloating.update((v) => !v);
+  }
+
+  protected onDownload(): void {
+    this.showDownloadModal.set(true);
+  }
+
   // Zoom Methods
   protected toggleZoomMenu(): void {
     this.showZoomMenu.update((v) => !v);
@@ -550,36 +757,57 @@ export class App {
     }
   }
 
-  protected setZoom(level: number): void {
+  protected setZoom(level: number, zoomPoint?: { x: number; y: number }): void {
+    const oldZoom = this.zoomLevel();
+    const oldScale = oldZoom / 100;
+    const newScale = level / 100;
+    const zoomFactor = newScale / oldScale;
+
     this.zoomLevel.set(level);
     this.showZoomMenu.set(false);
-  }
 
-  protected zoomIn(): void {
-    const current = this.zoomLevel();
-    const index = this.zoomLevels.indexOf(current);
-    if (index < this.zoomLevels.length - 1) {
-      this.setZoom(this.zoomLevels[index + 1]);
-    } else {
-      // Increment by 25% if beyond max
-      this.setZoom(current + 25);
+    // If zoom point is provided, adjust pan to zoom into that point (like Figma)
+    if (zoomPoint) {
+      // Calculate the world position of the zoom point before zoom
+      const worldX = (zoomPoint.x - this.panX()) / oldScale;
+      const worldY = (zoomPoint.y - this.panY()) / oldScale;
+
+      // Calculate new pan to keep the same world point under the cursor
+      const newPanX = zoomPoint.x - worldX * newScale;
+      const newPanY = zoomPoint.y - worldY * newScale;
+
+      this.panX.set(newPanX);
+      this.panY.set(newPanY);
     }
   }
 
-  protected zoomOut(): void {
+  protected zoomIn(zoomPoint?: { x: number; y: number }): void {
+    const current = this.zoomLevel();
+    const index = this.zoomLevels.indexOf(current);
+    if (index < this.zoomLevels.length - 1) {
+      this.setZoom(this.zoomLevels[index + 1], zoomPoint);
+    } else {
+      // Increment by 25% if beyond max
+      this.setZoom(current + 25, zoomPoint);
+    }
+  }
+
+  protected zoomOut(zoomPoint?: { x: number; y: number }): void {
     const current = this.zoomLevel();
     const index = this.zoomLevels.indexOf(current);
     if (index > 0) {
-      this.setZoom(this.zoomLevels[index - 1]);
+      this.setZoom(this.zoomLevels[index - 1], zoomPoint);
     } else {
       // Decrement by 25% if below min
-      this.setZoom(Math.max(25, current - 25));
+      this.setZoom(Math.max(25, current - 25), zoomPoint);
     }
   }
 
   protected zoomToFit(): void {
     // TODO: Calculate zoom to fit content
     this.setZoom(100);
+    this.panX.set(0);
+    this.panY.set(0);
     this.showZoomMenu.set(false);
   }
 
@@ -594,14 +822,100 @@ export class App {
     event.preventDefault();
     event.stopPropagation();
 
+    // Get mouse position relative to canvas-content (viewport coordinates)
+    const canvasContent = event.currentTarget as HTMLElement;
+    const rect = canvasContent.getBoundingClientRect();
+    const zoomPoint = {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+
     const delta = event.deltaY;
+    const zoomStep = Math.abs(delta) > 50 ? 10 : 5; // Larger steps for faster scrolling
 
     if (delta < 0) {
       // 上方向にスクロール = ズームイン
-      this.zoomIn();
+      const newZoom = Math.min(400, this.zoomLevel() + zoomStep);
+      this.setZoom(newZoom, zoomPoint);
     } else {
       // 下方向にスクロール = ズームアウト
-      this.zoomOut();
+      const newZoom = Math.max(25, this.zoomLevel() - zoomStep);
+      this.setZoom(newZoom, zoomPoint);
+    }
+  }
+
+  // Pan handlers (for dragging canvas)
+  protected onCanvasMouseDown(event: MouseEvent): void {
+    // Start panning if space is pressed or middle mouse button (button 1)
+    // Also allow panning with right-click + drag (for better UX)
+    if (event.button === 1 || this.isSpacePressed || (event.button === 2 && event.shiftKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.isPanning.set(true);
+      this.panStartX = event.clientX;
+      this.panStartY = event.clientY;
+      this.panStartPanX = this.panX();
+      this.panStartPanY = this.panY();
+      (event.currentTarget as HTMLElement).style.cursor = 'grabbing';
+      document.addEventListener('mousemove', this.onCanvasMouseMove);
+      document.addEventListener('mouseup', this.onCanvasMouseUp);
+    }
+  }
+
+  private onCanvasMouseMove = (event: MouseEvent): void => {
+    if (!this.isPanning()) return;
+
+    const deltaX = event.clientX - this.panStartX;
+    const deltaY = event.clientY - this.panStartY;
+
+    this.panX.set(this.panStartPanX + deltaX);
+    this.panY.set(this.panStartPanY + deltaY);
+  };
+
+  private onCanvasMouseUp = (event: MouseEvent): void => {
+    if (!this.isPanning()) return;
+
+    this.isPanning.set(false);
+    const canvasContent = document.querySelector('.canvas-content') as HTMLElement;
+    if (canvasContent) {
+      canvasContent.style.cursor = '';
+    }
+    document.removeEventListener('mousemove', this.onCanvasMouseMove);
+    document.removeEventListener('mouseup', this.onCanvasMouseUp);
+  };
+
+  // Handle space key for panning
+  @HostListener('keydown', ['$event'])
+  protected onKeyDown(event: KeyboardEvent): void {
+    if (
+      (event.code === 'Space' && event.target === document.body) ||
+      (event.target as HTMLElement)?.tagName === 'BODY' ||
+      (event.target as HTMLElement)?.closest('.canvas-content')
+    ) {
+      // Prevent default space behavior (scrolling)
+      if (
+        !(event.target as HTMLElement)?.isContentEditable &&
+        (event.target as HTMLElement)?.tagName !== 'INPUT' &&
+        (event.target as HTMLElement)?.tagName !== 'TEXTAREA'
+      ) {
+        event.preventDefault();
+      }
+      this.isSpacePressed = true;
+      const canvasContent = document.querySelector('.canvas-content') as HTMLElement;
+      if (canvasContent && !this.isPanning()) {
+        canvasContent.style.cursor = 'grab';
+      }
+    }
+  }
+
+  @HostListener('keyup', ['$event'])
+  protected onKeyUp(event: KeyboardEvent): void {
+    if (event.code === 'Space') {
+      this.isSpacePressed = false;
+      const canvasContent = document.querySelector('.canvas-content') as HTMLElement;
+      if (canvasContent && !this.isPanning()) {
+        canvasContent.style.cursor = '';
+      }
     }
   }
 }

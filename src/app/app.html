@@ -1,79 +1,34 @@
 <div class="app-container" (click)="onContainerClick($event)">
-  <!-- Top Bar -->
-  <div class="top-bar">
-    <div class="top-bar-left">
-      <button type="button" (click)="undo()" title="Undo" class="icon-button">↶</button>
-      <button type="button" (click)="redo()" title="Redo" class="icon-button">↷</button>
-      <div class="zoom-controls">
-        <div class="zoom-dropdown">
-          <button type="button" class="zoom-button" (click)="toggleZoomMenu()" title="Zoom">
-            <span class="zoom-icon">🔍</span>
-            <span>{{ zoomLevel() }}%</span>
-            <span class="zoom-caret">▼</span>
-          </button>
-          @if (showZoomMenu()) {
-          <div class="zoom-menu" (click)="$event.stopPropagation()">
-            <button
-              type="button"
-              class="zoom-menu-item"
-              (click)="setZoom(100)"
-              [class.active]="zoomLevel() === 100"
-            >
-              Actual size
-            </button>
-            <button type="button" class="zoom-menu-item" (click)="zoomToFit()">Zoom to fit</button>
-            <button type="button" class="zoom-menu-item" (click)="zoomIn()">
-              Zoom in
-              <span class="shortcut">Ctrl +</span>
-            </button>
-            <button type="button" class="zoom-menu-item" (click)="zoomOut()">
-              Zoom out
-              <span class="shortcut">Ctrl -</span>
-            </button>
-            <div class="zoom-divider"></div>
-            @for (level of zoomLevels; track level) {
-            <button
-              type="button"
-              class="zoom-menu-item"
-              (click)="setZoom(level)"
-              [class.active]="zoomLevel() === level"
-            >
-              {{ level }}%
-            </button>
-            }
-          </div>
-          }
-        </div>
-      </div>
-    </div>
-    <div class="logo">
-      <h1>{{ title() }}</h1>
-    </div>
-    <div class="toolbar">
-      <!-- <button type="button" (click)="undo()" title="Undo">↶ Undo</button>
-      <button type="button" (click)="redo()" title="Redo">↷ Redo</button>
-      <button type="button" (click)="saveProject()" title="Save">💾 Save</button>
-      <button type="button" (click)="loadProject()" title="Load">📂 Load</button> -->
-      <button type="button" (click)="exportWithTailwind()" title="Export HTML (Tailwind)">
-        📥 Export HTML
-      </button>
-      <!-- <button type="button" (click)="exportPurged()" title="Export Purged (no CDN)">
-        🧹 Export Purged
-      </button> -->
-      <button type="button" (click)="exportCss()" title="Export CSS">🎨 Export CSS</button>
-      <button type="button" (click)="preview()" title="Preview (Blob)">👁️ Preview</button>
-    </div>
-  </div>
+  <builder-navigation
+    (toggleLeftSidebar)="onToggleLeftSidebar()"
+    (toggleRightSidebar)="onToggleRightSidebar()"
+    (toggleDragMode)="onToggleDragMode()"
+    (toggleFullscreen)="onToggleFullscreen()"
+    (toggleNavigator)="onToggleNavigator()"
+    (download)="onDownload()"
+    (deviceChange)="onDeviceChange($event)"
+  ></builder-navigation>
 
   <!-- Main Layout -->
   <div class="builder-layout" #layoutRoot>
     <!-- Left Sidebar: Toolbox -->
-    <div class="sidebar-left" [style.flex-basis.%]="leftWidth()" [style.max-width.%]="leftWidth()">
+    <div
+      class="sidebar-left"
+      [style.flex-basis.%]="leftWidth()"
+      [style.max-width.%]="leftWidth()"
+      [style.display]="isLeftSidebarHidden() ? 'none' : 'flex'"
+    >
       <div class="panel-header">Components</div>
       <div class="panel-content">
         <app-tool-box (addWidget)="dz.add($event, { append: true })"></app-tool-box>
       </div>
     </div>
+
+    <!-- Left Resizer -->
+    <div class="resizer-vertical-left" (mousedown)="startDragLeft($event)"></div>
+    @if(isDraggingLeft()) {
+    <div class="resizer-ghost-left" [style.left.px]="ghostLeftPosition()"></div>
+    }
 
     <!-- Center: Canvas -->
     <div
@@ -84,73 +39,25 @@
       <div class="panel-header">Canvas</div>
       <div
         class="canvas-content"
-        [style.transform]="'scale(' + zoomLevel() / 100 + ')'"
-        [style.transform-origin]="'top left'"
+        [class.device-mobile]="activeDevice() === 'mobile'"
+        [class.device-tablet]="activeDevice() === 'tablet'"
+        [class.device-desktop]="activeDevice() === 'desktop'"
+        [class.is-panning]="isPanning()"
+        [style.transform]="'translate(' + panX() + 'px, ' + panY() + 'px) scale(' + zoomLevel() / 100 + ')'"
+        [style.transform-origin]="'0 0'"
+        [style.width.px]="activeDevice() === 'desktop' ? null : getViewportWidth()"
+        [style.max-width.px]="activeDevice() === 'desktop' ? null : getViewportWidth()"
+        [style.min-height.px]="activeDevice() === 'desktop' ? null : getViewportHeight()"
         (wheel)="onCanvasWheel($event)"
+        (mousedown)="onCanvasMouseDown($event)"
+        (contextmenu)="$event.preventDefault()"
       >
         <app-dynamic-zone
           #dz
           [registry]="registry"
           [componentDefinitions]="componentDefinitions"
+          [draggingDisabled]="isDragDisabled()"
         ></app-dynamic-zone>
-      </div>
-    </div>
-
-    <!-- Right Sidebar: Panels -->
-    <!-- Right resizer between center and right sidebar -->
-    <div class="resizer-vertical" (mousedown)="startDragRight($event)"></div>
-
-    <div
-      class="sidebar-right"
-      [style.flex-basis.%]="rightWidth()"
-      [style.max-width.%]="rightWidth()"
-    >
-      <!-- Panel Tabs -->
-      <div class="panel-tabs">
-        <button
-          class="tab-button"
-          [class.active]="activePanel === 'blocks'"
-          (click)="setActivePanel('blocks')"
-        >
-          Blocks
-        </button>
-        <button
-          class="tab-button"
-          [class.active]="activePanel === 'navigator'"
-          (click)="setActivePanel('navigator')"
-        >
-          Layers
-        </button>
-        <button
-          class="tab-button"
-          [class.active]="activePanel === 'assets'"
-          (click)="setActivePanel('assets')"
-        >
-          Assets
-        </button>
-        <button
-          class="tab-button"
-          [class.active]="activePanel === 'properties'"
-          (click)="setActivePanel('properties')"
-        >
-          Properties
-        </button>
-      </div>
-
-      <!-- Panel Content -->
-      <div class="panel-content">
-        @if (activePanel === 'blocks') {
-        <app-block-manager-panel [blocks]="blocks"></app-block-manager-panel>
-        } @if (activePanel === 'navigator') {
-        <app-navigator-panel
-          [rootComponent]="getRootComponent()"
-          (componentSelect)="onNavigatorSelect($event)"
-        ></app-navigator-panel>
-        } @if (activePanel === 'assets') {
-        <builder-assets-panel></builder-assets-panel>
-        } @if (activePanel === 'properties') {
-        <app-trait-manager-panel></app-trait-manager-panel>
-        }
       </div>
     </div>
   </div>
@@ -159,3 +66,23 @@
 <router-outlet />
 <builder-modal-host />
 <builder-drop-indicator />
+
+<!-- Floating Navigator Panel -->
+@if (showNavigatorFloating()) {
+<app-floating-panel
+  title="Navigator"
+  [initialX]="initialNavigatorX()"
+  [initialY]="initialNavigatorY()"
+  [onClose]="closeNavigatorFloating"
+>
+  <app-navigator-panel
+    [rootComponent]="getRootComponent()"
+    (componentSelect)="onNavigatorSelect($event)"
+  ></app-navigator-panel>
+</app-floating-panel>
+}
+
+<!-- Download Modal -->
+@if (showDownloadModal()) {
+  <app-download-modal (close)="showDownloadModal.set(false)"></app-download-modal>
+}

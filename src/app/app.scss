@@ -6,6 +6,17 @@
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
     sans-serif;
+  background: #ffffff;
+  transition: none; /* Prevent flash on fullscreen toggle */
+}
+
+/* Prevent black flash during fullscreen transition */
+:fullscreen,
+:-webkit-full-screen,
+:-moz-full-screen,
+:-ms-fullscreen {
+  background: #ffffff;
+  transition: none;
 }
 
 /* Top Bar */
@@ -189,8 +200,8 @@
   position: relative;
 }
 .sidebar-left {
-  flex: 0 0 15%;
-  max-width: 15%;
+  flex: 0 0 25%;
+  max-width: 25%;
 }
 .sidebar-right {
   flex: 0 0 25%;
@@ -217,6 +228,29 @@
   .panel-content {
     flex: 1;
     overflow-y: auto;
+
+    /* Hide scrollbar for tool-box */
+    app-tool-box {
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
+
+      &::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
+
+      * {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+
+        &::-webkit-scrollbar {
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+        }
+      }
+    }
   }
 }
 
@@ -273,11 +307,36 @@
   background: rgba(0, 0, 0, 0.12);
 }
 
+/* Vertical resizer between left and center */
+.resizer-vertical-left {
+  width: 10px; /* Vùng tương tác rộng 10px */
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  margin-left: -5px; /* Căn giữa vùng tương tác trên đường viền */
+  z-index: 10; /* Đảm bảo nó nằm trên cùng */
+}
+
+/* Tạo chỉ báo trực quan khi di chuột vào */
+.resizer-vertical-left::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px; /* Định vị đường kẻ 2px ở giữa vùng 10px */
+  width: 2px;
+  background-color: transparent; /* Mặc định trong suốt */
+  transition: background-color 0.2s ease-out;
+}
+
+.resizer-vertical-left:hover::after {
+  background-color: #3b82f6; /* Hiển thị đường màu xanh khi di chuột vào */
+}
+
 /* Canvas Area */
 .canvas-area {
-  /* 4/10 = 40% */
-  flex: 0 0 60%;
-  max-width: 60%;
+  flex: 0 0 50%;
+  max-width: 50%;
   display: flex;
   flex-direction: column;
   background: white;
@@ -297,12 +356,46 @@
     overflow: auto;
     padding: 20px;
     background: #fafafa;
-    transition: transform 0.2s ease;
-    width: fit-content;
-    min-width: 100%;
+    transition: transform 0.2s ease, width 0.3s ease, max-width 0.3s ease;
+    box-sizing: border-box;
     height: fit-content;
     min-height: 100%;
-    box-sizing: border-box;
+    position: relative;
+    
+    // Pan cursor styles
+    &.is-panning,
+    &[style*="cursor: grab"],
+    &[style*="cursor: grabbing"] {
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
+
+    // Default desktop (full width)
+    width: 100%;
+    min-width: 100%;
+
+    // Device-specific styles
+    &.device-mobile,
+    &.device-tablet {
+      margin: 0 auto;
+      padding: 20px;
+      border-left: 1px solid #ddd;
+      border-right: 1px solid #ddd;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+      background: #ffffff;
+      min-width: auto; // Override default min-width: 100%
+    }
+
+    &.device-desktop {
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0;
+      border: none;
+      box-shadow: none;
+      min-width: 100%;
+    }
 
     // Đảm bảo carousel không tràn ra ngoài
     app-voucher-carousel {
@@ -342,4 +435,21 @@
   &:hover {
     background: #a1a1a1;
   }
+}
+
+/* Ghost resizer for left sidebar */
+.resizer-ghost-left {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: #3b82f6;
+  z-index: 9999; /* Ensure it's on top */
+  pointer-events: none; /* Prevent it from interfering with mouse events */
+}
+
+/* Animation for sidebars */
+.sidebar-left,
+.canvas-area {
+  transition: flex-basis 0.05s ease-out, max-width 0.05s ease-out;
 }
