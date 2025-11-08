@@ -43,6 +43,7 @@
         [class.device-tablet]="activeDevice() === 'tablet'"
         [class.device-desktop]="activeDevice() === 'desktop'"
         [class.is-panning]="isPanning()"
+        [class.hand-tool-active]="isHandToolActive()"
         [style.transform]="'translate(' + panX() + 'px, ' + panY() + 'px) scale(' + zoomLevel() / 100 + ')'"
         [style.transform-origin]="'0 0'"
         [style.width.px]="activeDevice() === 'desktop' ? null : getViewportWidth()"

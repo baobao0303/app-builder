@@ -67,6 +67,7 @@ export class App implements OnInit {
   protected initialNavigatorX = signal(0);
   protected initialNavigatorY = signal(0);
   protected isDragDisabled = signal(false); // Track drag mode
+  protected isHandToolActive = signal(false); // Track hand/pan tool state
   protected isLeftSidebarHidden = signal(false); // Track left sidebar visibility
   protected isFullscreen = signal(false); // Track fullscreen state
   protected showDownloadModal = signal(false);
@@ -669,10 +670,25 @@ export class App implements OnInit {
 
   protected onToggleDragMode(): void {
     this.isDragDisabled.update((v) => !v);
+    this.isHandToolActive.update((v) => !v);
+
+    // Update cursor when hand tool is active
+    const canvasContent = document.querySelector('.canvas-content') as HTMLElement;
+    if (canvasContent) {
+      if (this.isHandToolActive()) {
+        canvasContent.style.cursor = 'grab';
+      } else {
+        canvasContent.style.cursor = '';
+      }
+    }
+
     // Notify dynamic zone to disable/enable dragging
     if (this.dz) {
       // We'll need to add a method to DynamicZone to disable dragging
-      console.log('Drag mode toggled:', this.isDragDisabled() ? 'disabled' : 'enabled');
+      console.log(
+        'Hand tool toggled:',
+        this.isHandToolActive() ? 'active (pan mode)' : 'inactive (edit mode)'
+      );
     }
   }
 
@@ -846,9 +862,24 @@ export class App implements OnInit {
 
   // Pan handlers (for dragging canvas)
   protected onCanvasMouseDown(event: MouseEvent): void {
-    // Start panning if space is pressed or middle mouse button (button 1)
-    // Also allow panning with right-click + drag (for better UX)
-    if (event.button === 1 || this.isSpacePressed || (event.button === 2 && event.shiftKey)) {
+    // Start panning if:
+    // 1. Hand tool is active (click and drag to pan)
+    // 2. Space is pressed
+    // 3. Middle mouse button (button 1)
+    // 4. Right-click + Shift (for better UX)
+    const shouldPan =
+      this.isHandToolActive() ||
+      event.button === 1 ||
+      this.isSpacePressed ||
+      (event.button === 2 && event.shiftKey);
+
+    if (shouldPan) {
+      // Don't pan if clicking on interactive elements (buttons, inputs, etc.)
+      const target = event.target as HTMLElement;
+      if (target.closest('button, input, textarea, select, a, [contenteditable="true"]')) {
+        return;
+      }
+
       event.preventDefault();
       event.stopPropagation();
       this.isPanning.set(true);

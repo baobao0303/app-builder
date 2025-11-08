@@ -372,6 +372,21 @@
       -ms-user-select: none;
     }
 
+    // Hand tool active (pan mode)
+    &.hand-tool-active {
+      cursor: grab !important;
+      
+      // Disable text selection when hand tool is active
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      
+      &.is-panning {
+        cursor: grabbing !important;
+      }
+    }
+
     // Default desktop (full width)
     width: 100%;
     min-width: 100%;
