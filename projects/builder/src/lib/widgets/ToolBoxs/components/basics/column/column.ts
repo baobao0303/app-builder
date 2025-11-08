@@ -23,9 +23,37 @@ import { Component, ElementRef, ViewChild, ViewContainerRef } from '@angular/cor
         position: relative;
         width: 100%;
         box-sizing: border-box;
+        min-width: 0;
       }
-      .column[style*='width'] {
-        flex: none;
+      /* Mobile: full width, stacked - force override all styles */
+      @media (max-width: 767px) {
+        .column {
+          flex: 1 1 100% !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+          margin-bottom: 16px;
+          display: block;
+        }
+        .column:last-child {
+          margin-bottom: 0;
+        }
+        /* Override any inline width styles */
+        .column[style*='width'],
+        .column[style*='Width'] {
+          width: 100% !important;
+          flex: 1 1 100% !important;
+          max-width: 100% !important;
+        }
+      }
+      /* Tablet and up: flex layout */
+      @media (min-width: 768px) {
+        .column {
+          flex: 1;
+        }
+        .column[style*='width'] {
+          flex: none;
+        }
       }
       .column-label {
         position: absolute;
@@ -37,6 +65,11 @@ import { Component, ElementRef, ViewChild, ViewContainerRef } from '@angular/cor
         font-weight: 500;
         pointer-events: none;
         z-index: 1;
+      }
+      @media (max-width: 767px) {
+        .column-label {
+          font-size: 12px;
+        }
       }
     `,
   ],

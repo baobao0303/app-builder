@@ -30,18 +30,22 @@ import { NavigatorNodeComponent } from './navigator-node.component';
   styles: [
     `
       .navigator-panel {
-        padding: 10px;
-        max-height: 500px;
+        padding: 0;
+        height: 100%;
         overflow-y: auto;
       }
+      .navigator-panel h3 {
+        display: none; /* Hide title as it's in floating panel header */
+      }
       .tree {
-        font-family: monospace;
-        font-size: 12px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 13px;
+        padding: 8px;
       }
       .empty {
         padding: 20px;
         text-align: center;
-        color: #999;
+        color: #666;
       }
     `,
   ],

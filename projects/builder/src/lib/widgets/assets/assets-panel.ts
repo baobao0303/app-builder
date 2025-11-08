@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AssetManagerService, AssetItem } from '../../core/asset-manager/asset-manager.service';
+import { AssetManagerService, Asset } from '../../core/asset-manager/asset-manager.service';
 
 @Component({
   selector: 'builder-assets-panel',
@@ -12,7 +12,7 @@ import { AssetManagerService, AssetItem } from '../../core/asset-manager/asset-m
 export class AssetsPanelComponent {
   private assets = inject(AssetManagerService);
 
-  protected get list(): AssetItem[] {
+  protected get list(): Asset[] {
     return this.assets.getAssets();
   }
 
@@ -24,21 +24,19 @@ export class AssetsPanelComponent {
     const reader = new FileReader();
     reader.onload = () => {
       const src = String(reader.result || '');
-      const item: AssetItem = {
-        id: `${Date.now()}-${file.name}`,
-        type: file.type.startsWith('image') ? 'image' : 'file',
+      const item: Omit<Asset, 'id'> = {
+        type: file.type.startsWith('image') ? 'image' : 'video',
         src,
-        sizeBytes: file.size,
         name: file.name,
       };
-      this.assets.add(item);
+      this.assets.addAsset(item);
     };
     reader.readAsDataURL(file);
     input.value = '';
   }
 
   protected remove(id: string): void {
-    this.assets.remove(id);
+    this.assets.removeAsset(id);
   }
 }
 

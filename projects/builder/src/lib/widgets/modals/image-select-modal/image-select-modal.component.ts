@@ -1,7 +1,7 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AssetManagerService, AssetItem } from '../../../core/asset-manager/asset-manager.service';
+import { AssetManagerService, Asset } from '../../../core/asset-manager/asset-manager.service';
 import { ModalService } from '../../../core/modal-dialog/modal.service';
 
 @Component({
@@ -164,7 +164,7 @@ export class ImageSelectModalComponent implements OnInit {
     }
   }
 
-  protected getAssets(): AssetItem[] {
+  protected getAssets(): Asset[] {
     return this.assets.getAssets().filter((a) => a.type === 'image');
   }
 
@@ -177,7 +177,7 @@ export class ImageSelectModalComponent implements OnInit {
     );
   }
 
-  protected selectImage(asset: AssetItem): void {
+  protected selectImage(asset: Asset): void {
     if (this.onSelect) {
       this.onSelect(asset.src, asset.name || 'Image');
     } else {
@@ -199,7 +199,7 @@ export class ImageSelectModalComponent implements OnInit {
 
   protected deleteImage(id: string): void {
     if (confirm('Are you sure you want to delete this image?')) {
-      this.assets.remove(id);
+      this.assets.removeAsset(id);
     }
   }
 
@@ -214,14 +214,12 @@ export class ImageSelectModalComponent implements OnInit {
       const reader = new FileReader();
       reader.onload = () => {
         const src = String(reader.result || '');
-        const item: AssetItem = {
-          id: `${Date.now()}-${file.name}`,
+        const item: Omit<Asset, 'id'> = {
           type: 'image',
           src,
-          sizeBytes: file.size,
           name: file.name,
         };
-        this.assets.add(item);
+        this.assets.addAsset(item);
       };
       reader.readAsDataURL(file);
     };
@@ -232,12 +230,11 @@ export class ImageSelectModalComponent implements OnInit {
     const url = prompt('Enter image URL:');
     if (!url) return;
 
-    const item: AssetItem = {
-      id: `${Date.now()}-url`,
+    const item: Omit<Asset, 'id'> = {
       type: 'image',
       src: url,
       name: url.split('/').pop() || 'Image from URL',
     };
-    this.assets.add(item);
+    this.assets.addAsset(item);
   }
 }

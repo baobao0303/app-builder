@@ -1,7 +1,7 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AssetManagerService, AssetItem } from '../../../core/asset-manager/asset-manager.service';
+import { AssetManagerService, Asset } from '../../../core/asset-manager/asset-manager.service';
 import { ModalService } from '../../../core/modal-dialog/modal.service';
 
 @Component({
@@ -26,7 +26,7 @@ import { ModalService } from '../../../core/modal-dialog/modal.service';
       <div class="video-grid">
         @for (asset of filteredAssets(); track asset.id) {
         <div class="video-item" (click)="selectVideo(asset)">
-          <video [src]="asset.src" [poster]="asset.meta?.['poster']" class="video-thumbnail" muted>
+          <video [src]="asset.src" class="video-thumbnail" muted>
             Your browser does not support the video tag.
           </video>
           <div class="video-actions">
@@ -167,7 +167,7 @@ export class VideoSelectModalComponent implements OnInit {
     }
   }
 
-  protected getAssets(): AssetItem[] {
+  protected getAssets(): Asset[] {
     return this.assets.getAssets().filter((a) => a.type === 'video');
   }
 
@@ -180,9 +180,9 @@ export class VideoSelectModalComponent implements OnInit {
     );
   }
 
-  protected selectVideo(asset: AssetItem): void {
+  protected selectVideo(asset: Asset): void {
     if (this.onSelect) {
-      this.onSelect(asset.src, asset.name || 'Video', asset.meta?.['poster']);
+      this.onSelect(asset.src, asset.name || 'Video');
     } else {
       // Fallback: update modal state
       const state = this.modal.getState();
@@ -193,7 +193,6 @@ export class VideoSelectModalComponent implements OnInit {
             ...state.data,
             selectedVideo: asset.src,
             selectedVideoName: asset.name,
-            selectedPoster: asset.meta?.['poster'],
           },
         });
       }
@@ -203,7 +202,7 @@ export class VideoSelectModalComponent implements OnInit {
 
   protected deleteVideo(id: string): void {
     if (confirm('Are you sure you want to delete this video?')) {
-      this.assets.remove(id);
+      this.assets.removeAsset(id);
     }
   }
 
@@ -218,14 +217,12 @@ export class VideoSelectModalComponent implements OnInit {
       const reader = new FileReader();
       reader.onload = () => {
         const src = String(reader.result || '');
-        const item: AssetItem = {
-          id: `${Date.now()}-${file.name}`,
+        const item: Omit<Asset, 'id'> = {
           type: 'video',
           src,
-          sizeBytes: file.size,
           name: file.name,
         };
-        this.assets.add(item);
+        this.assets.addAsset(item);
       };
       reader.readAsDataURL(file);
     };
@@ -236,16 +233,11 @@ export class VideoSelectModalComponent implements OnInit {
     const url = prompt('Enter video URL:');
     if (!url) return;
 
-    const posterUrl = prompt('Enter poster/thumbnail URL (optional):');
-
-    const item: AssetItem = {
-      id: `${Date.now()}-url`,
+    const item: Omit<Asset, 'id'> = {
       type: 'video',
       src: url,
       name: url.split('/').pop() || 'Video from URL',
-      meta: posterUrl ? { poster: posterUrl } : undefined,
     };
-    this.assets.add(item);
+    this.assets.addAsset(item);
   }
 }
-

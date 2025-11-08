@@ -19,7 +19,7 @@ import { ComponentModel } from '../../core/dom-components/model/component.model'
           &nbsp;&nbsp;
         }
       </span>
-      <span class="tag">{{ component.getTagName() }}</span>
+      <span class="tag">{{ getDisplayName() }}</span>
       <span class="id">#{{ component.getId() }}</span>
     </div>
     @if (hasChildren && expanded) {
@@ -58,7 +58,7 @@ import { ComponentModel } from '../../core/dom-components/model/component.model'
       font-weight: bold;
     }
     .id {
-      color: #999;
+      color: #666;
       font-size: 10px;
     }
     .children {
@@ -88,6 +88,14 @@ export class NavigatorNodeComponent {
 
   onSelect(component: ComponentModel): void {
     this.select.emit(component);
+  }
+
+  getDisplayName(): string {
+    // Root component (level 0) should display as "Page"
+    if (this.level === 0) {
+      return 'Page';
+    }
+    return this.component.getTagName();
   }
 }
 

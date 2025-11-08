@@ -1,0 +1,30 @@
+<div class="download-modal-overlay" (click)="onClose()">
+  <div class="download-modal-content" (click)="$event.stopPropagation()">
+    <div class="download-modal-header">
+      <h3 class="modal-title">Export Options</h3>
+      <button class="close-button" (click)="onClose()">&times;</button>
+    </div>
+    <div class="download-modal-body">
+      <p class="modal-description">Select the files you want to download.</p>
+      <div class="options-group">
+        <div class="option-item">
+          <input type="checkbox" id="download-html" [(ngModel)]="downloadOptions.html">
+          <label for="download-html">HTML</label>
+        </div>
+        <div class="option-item">
+          <input type="checkbox" id="download-css" [(ngModel)]="downloadOptions.css">
+          <label for="download-css">CSS</label>
+        </div>
+        <div class="option-item disabled">
+          <input type="checkbox" id="download-js" [(ngModel)]="downloadOptions.js" disabled>
+          <label for="download-js">JavaScript (coming soon)</label>
+        </div>
+      </div>
+    </div>
+    <div class="download-modal-footer">
+      <button class="btn btn-secondary" (click)="onClose()">Cancel</button>
+      <button class="btn btn-primary" (click)="onDownload()">Download</button>
+    </div>
+  </div>
+</div>
+

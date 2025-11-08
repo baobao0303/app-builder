@@ -11,8 +11,11 @@ import {
   Injector,
   AfterViewInit,
   OnDestroy,
+  OnChanges,
+  SimpleChanges,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { getElementLabel } from './interaction/editor-utils';
 import { CoreBase } from '../../core/core.base';
 import { ComponentModelService } from '../../core/dom-components/component-model.service';
 import { ComponentDefinition } from '../../core/dom-components/model/component.model';
@@ -57,12 +60,15 @@ interface ComponentMeta {
   templateUrl: './dynamic-zone.html',
   styleUrl: './dynamic-zone.scss',
 })
-export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
+export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy, OnChanges {
   // Registry: key -> component type
   @Input() registry: Record<string, Type<unknown>> = {};
 
   // Registry cho component definitions (tùy chọn, để generate HTML từ model)
   @Input() componentDefinitions?: Record<string, ComponentDefinition>;
+
+  // Disable dragging mode
+  @Input() draggingDisabled: boolean = false;
 
   @ViewChild('container', { read: ViewContainerRef, static: true })
   private container!: ViewContainerRef;
@@ -86,6 +92,8 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
   private draggingRef?: ComponentRef<any>;
   private lifecycleHandlers?: LifecycleHandlers;
   private selectionController!: SelectionController;
+  private hoverCleanups = new Map<ComponentRef<any>, () => void>(); // Cleanup functions for hover
+  private hoverLabelElement?: HTMLElement; // Single label element for all components
 
   // Services quản lý model và parse HTML
   private componentModelService = inject(ComponentModelService);
@@ -204,6 +212,25 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
       this.componentMeta.delete(ref);
     }
     this.componentRefs.delete(ref);
+
+    // Cleanup hover highlight
+    const cleanup = this.hoverCleanups.get(ref);
+    if (cleanup) {
+      cleanup();
+      this.hoverCleanups.delete(ref);
+    }
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['draggingDisabled'] && !changes['draggingDisabled'].firstChange) {
+      // Update draggable attribute for all registered components
+      this.componentRefs.forEach((componentId, ref) => {
+        const el = (ref.location?.nativeElement || null) as HTMLElement | null;
+        if (el) {
+          el.setAttribute('draggable', this.draggingDisabled ? 'false' : 'true');
+        }
+      });
+    }
   }
 
   ngAfterViewInit(): void {
@@ -276,6 +303,12 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
     }
     this.selectionController?.destroy();
     this.deselect();
+
+    // Cleanup hover label element
+    if (this.hoverLabelElement && this.hoverLabelElement.parentNode) {
+      this.hoverLabelElement.parentNode.removeChild(this.hoverLabelElement);
+      this.hoverLabelElement = undefined;
+    }
   }
 
   // Gọi từ toolbox khi click một item -> dùng helper của CoreBase
@@ -529,6 +562,20 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
       return;
     }
 
+    // Handle asset drop: check if JSON contains assetSrc
+    const jsonData = ev.dataTransfer?.getData('application/json');
+    let assetData: { assetSrc?: string; assetName?: string } | null = null;
+    if (jsonData) {
+      try {
+        const parsed = JSON.parse(jsonData);
+        if (parsed.assetSrc) {
+          assetData = parsed;
+        }
+      } catch (e) {
+        // Not asset data, continue with normal handling
+      }
+    }
+
     // Handle Blocks panel: application/json payload with HTML content
     const handled = handleExternalDrop(
       {
@@ -554,6 +601,39 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
       dropContext.indicatorState,
       (key) => resolveBlockHtmlHelper(key)
     );
+
+    // If asset data exists and component was created, set imageSrc/videoSrc
+    if (handled && assetData?.assetSrc && extPayload.type === 'text-key') {
+      const componentKey = extPayload.key;
+      if (componentKey === 'image' || componentKey === 'video') {
+        setTimeout(() => {
+          // Find the newly created component ref
+          const topRefs = this.getContainerRefs(dropTargetContainer, false);
+          let newRef: ComponentRef<any> | undefined;
+          if (insertIndex !== undefined && insertIndex >= 0) {
+            newRef = topRefs[insertIndex];
+          } else {
+            newRef = topRefs[topRefs.length - 1];
+          }
+          if (newRef) {
+            if (componentKey === 'image' && (newRef.instance as any)?.imageSrc !== undefined) {
+              (newRef.instance as any).imageSrc = assetData.assetSrc;
+              (newRef.instance as any).imageAlt = assetData.assetName || 'Image';
+              (newRef.changeDetectorRef as any)?.detectChanges?.();
+              console.log('[DynamicZone.drop] Image source set from asset:', assetData.assetSrc);
+            } else if (
+              componentKey === 'video' &&
+              (newRef.instance as any)?.videoSrc !== undefined
+            ) {
+              (newRef.instance as any).videoSrc = assetData.assetSrc;
+              (newRef.instance as any).videoName = assetData.assetName || 'Video';
+              (newRef.changeDetectorRef as any)?.detectChanges?.();
+              console.log('[DynamicZone.drop] Video source set from asset:', assetData.assetSrc);
+            }
+          }
+        }, 50);
+      }
+    }
 
     if (!handled) {
       console.warn('[DynamicZone.drop] unhandled payload', extPayload);
@@ -616,9 +696,57 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
 
     const el = (ref.location?.nativeElement || null) as HTMLElement | null;
     if (!el) return;
-    el.setAttribute('draggable', 'true');
+    el.setAttribute('draggable', this.draggingDisabled ? 'false' : 'true');
     el.classList.add('dz-item');
     el.dataset['dzContainer'] = containerId;
+
+    // Ensure hover label element exists
+    if (!this.hoverLabelElement) {
+      this.hoverLabelElement = document.createElement('div');
+      this.hoverLabelElement.className = 'dz-hover-label';
+      // Apply styles directly to ensure no dark block effect
+      this.hoverLabelElement.style.cssText =
+        'position: absolute; z-index: 10000; pointer-events: none; display: none; ' +
+        'background-color: #3b82f6; color: #ffffff; padding: 4px 8px; border-radius: 4px; ' +
+        'font-size: 12px; font-weight: 500; white-space: nowrap; ' +
+        'box-shadow: none; border: none; outline: none; ' +
+        'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; ' +
+        'line-height: 1.4; user-select: none;';
+      document.body.appendChild(this.hoverLabelElement);
+    }
+
+    // Hover highlight and label handlers
+    const onMouseEnter = (e: MouseEvent) => {
+      // Don't show hover highlight if dragging
+      if (!this.draggingRef) {
+        el.classList.add('dz-hover-highlight');
+
+        // Show hover label
+        if (this.hoverLabelElement) {
+          const label = this.getHoverLabel(el);
+          this.hoverLabelElement.textContent = label;
+          this.hoverLabelElement.style.display = 'block';
+          this.updateHoverLabelPosition(el);
+        }
+      }
+    };
+    const onMouseLeave = () => {
+      el.classList.remove('dz-hover-highlight');
+
+      // Hide hover label
+      if (this.hoverLabelElement) {
+        this.hoverLabelElement.style.display = 'none';
+      }
+    };
+    const onMouseMove = () => {
+      if (
+        !this.draggingRef &&
+        this.hoverLabelElement &&
+        this.hoverLabelElement.style.display === 'block'
+      ) {
+        this.updateHoverLabelPosition(el);
+      }
+    };
 
     const click = (e: Event) => {
       const target = e.target as HTMLElement;
@@ -713,6 +841,11 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
     applyInlineEdit(el, (n) => this.inlineEditService.applyToElement(n));
 
     const dragStart = (e: DragEvent) => {
+      if (this.draggingDisabled) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       e.stopPropagation();
       const index = this.indexOfRef(ref);
       e.dataTransfer?.setData('text/dz-index', String(index));
@@ -722,6 +855,11 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
       }
       e.dataTransfer?.setDragImage?.(new Image(), 0, 0);
       el.classList.add('dragging');
+      el.classList.remove('dz-hover-highlight'); // Remove hover highlight when dragging
+      // Hide hover label when dragging
+      if (this.hoverLabelElement) {
+        this.hoverLabelElement.style.display = 'none';
+      }
       this.draggingRef = ref;
 
       // Notify drag-drop manager
@@ -739,7 +877,9 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
 
       // Determine if we're over the inner container or the outer element
       const target = e.target as HTMLElement;
-      const innerEl = el.querySelector('.section-inner, .row-inner, .column-inner') as HTMLElement;
+      const innerEl = el.querySelector(
+        '.section-inner, .row-inner, .column-inner, .vcw-carousel-inner'
+      ) as HTMLElement;
       // If no inner element found, use the container element itself (for row/column with ng-container)
       const containerEl =
         innerEl && (innerEl.contains(target) || target === innerEl) ? innerEl : el;
@@ -825,7 +965,9 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
 
       // Remove drag-over class from both outer and inner elements
       el.classList.remove('drag-over');
-      const innerEl = el.querySelector('.section-inner, .row-inner, .column-inner') as HTMLElement;
+      const innerEl = el.querySelector(
+        '.section-inner, .row-inner, .column-inner, .vcw-carousel-inner'
+      ) as HTMLElement;
       if (innerEl) {
         innerEl.classList.remove('drag-over');
       }
@@ -935,11 +1077,27 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
 
     // Use capture phase to ensure select() runs before inline edit
     el.addEventListener('click', click, true);
+    el.addEventListener('mouseenter', onMouseEnter);
+    el.addEventListener('mouseleave', onMouseLeave);
+    el.addEventListener('mousemove', onMouseMove);
     el.addEventListener('dragstart', dragStart);
     el.addEventListener('dragover', dragOver);
     el.addEventListener('dragleave', dragLeave);
     el.addEventListener('drop', drop);
     el.addEventListener('dragend', dragEnd);
+
+    // Store cleanup function for hover highlight and label
+    const hoverCleanup = () => {
+      el.removeEventListener('mouseenter', onMouseEnter);
+      el.removeEventListener('mouseleave', onMouseLeave);
+      el.removeEventListener('mousemove', onMouseMove);
+      el.classList.remove('dz-hover-highlight');
+      // Hide label if this element was showing it
+      if (this.hoverLabelElement) {
+        this.hoverLabelElement.style.display = 'none';
+      }
+    };
+    this.hoverCleanups.set(ref, hoverCleanup);
 
     // For components with getChildContainer (like Section, Row, Column),
     // also register drop events on the inner container element
@@ -947,7 +1105,7 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
       // Use setTimeout to ensure inner element is rendered
       setTimeout(() => {
         const innerEl = el.querySelector(
-          '.section-inner, .row-inner, .column-inner'
+          '.section-inner, .row-inner, .column-inner, .vcw-carousel-inner'
         ) as HTMLElement;
         // If no inner element found (e.g., using ng-container), use container element directly
         const dropTargetEl = innerEl || el;
@@ -1157,6 +1315,44 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy {
 
   private enableDragMode(): void {
     this.selectionController.enableDragMode();
+  }
+
+  private getHoverLabel(element: HTMLElement): string {
+    // Use the shared getElementLabel function for consistency
+    let componentName = getElementLabel(element);
+
+    // Check for Angular component selectors (app-*)
+    const tag = element.tagName.toLowerCase();
+    if (tag.startsWith('app-')) {
+      componentName = tag
+        .replace('app-', '')
+        .split('-')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    }
+
+    // Add ID if present
+    const id = element.id ? `#${element.id}` : '';
+
+    // Build final label
+    if (id) {
+      return `${componentName} ${id}`;
+    }
+    return componentName;
+  }
+
+  private updateHoverLabelPosition(element: HTMLElement): void {
+    if (!this.hoverLabelElement) return;
+
+    const rect = element.getBoundingClientRect();
+    const labelRect = this.hoverLabelElement.getBoundingClientRect();
+
+    // Position label at top-left of element
+    const top = rect.top + window.scrollY - labelRect.height - 4;
+    const left = rect.left + window.scrollX;
+
+    this.hoverLabelElement.style.top = `${top}px`;
+    this.hoverLabelElement.style.left = `${left}px`;
   }
 
   // resolveBlockHtml moved to interaction/styles/component-styles.ts

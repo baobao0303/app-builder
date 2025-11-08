@@ -1,101 +1,2003 @@
-<div class="tabs">
-  <div class="tab-headers">
-    <button
-      class="tab-header"
-      [class.active]="activeTab === 'regular'"
-      (click)="activeTab = 'regular'"
-    >
-      Regular
-    </button>
-    <button
-      class="tab-header"
-      [class.active]="activeTab === 'symbols'"
-      (click)="activeTab = 'symbols'"
-    >
-      Symbols
-    </button>
-  </div>
-  <div class="tab-content">
-    <div *ngIf="activeTab === 'regular'" class="tab-panel">
-      <!-- Basic Dropdown -->
-      <div class="dropdown">
-        <button class="dropdown-header" (click)="toggleDropdown('basic')">
-          <span>Basic</span>
-          <span class="dropdown-icon" [class.open]="openedDropdowns['basic']">▼</span>
-        </button>
-        <div class="dropdown-content" *ngIf="openedDropdowns['basic']">
-          <div
-            *ngFor="let it of regularCategories.basic"
-            draggable="true"
-            (dragstart)="onDragStart($event, it.key)"
-            class="draggable-item"
-          >
-            {{ it.label }}
-          </div>
-        </div>
-      </div>
-
-      <!-- Forms Dropdown -->
-      <div class="dropdown">
-        <button class="dropdown-header" (click)="toggleDropdown('forms')">
-          <span>Forms</span>
-          <span class="dropdown-icon" [class.open]="openedDropdowns['forms']">▼</span>
-        </button>
-        <div class="dropdown-content" *ngIf="openedDropdowns['forms']">
-          <div
-            *ngFor="let it of regularCategories.forms"
-            draggable="true"
-            (dragstart)="onDragStart($event, it.key)"
-            class="draggable-item"
-          >
-            {{ it.label }}
-          </div>
-        </div>
-      </div>
-
-      <!-- Extra Dropdown -->
-      <div class="dropdown">
-        <button class="dropdown-header" (click)="toggleDropdown('extra')">
-          <span>Extra</span>
-          <span class="dropdown-icon" [class.open]="openedDropdowns['extra']">▼</span>
-        </button>
-        <div class="dropdown-content" *ngIf="openedDropdowns['extra']">
-          <div
-            *ngFor="let it of regularCategories.extra"
-            draggable="true"
-            (dragstart)="onDragStart($event, it.key)"
-            class="draggable-item"
-          >
-            {{ it.label }}
-          </div>
-        </div>
-      </div>
-
-      <!-- Layout Dropdown -->
-      <div class="dropdown">
-        <button class="dropdown-header" (click)="toggleDropdown('layout')">
-          <span>Layout</span>
-          <span class="dropdown-icon" [class.open]="openedDropdowns['layout']">▼</span>
-        </button>
-        <div class="dropdown-content" *ngIf="openedDropdowns['layout']">
-          <div
-            *ngFor="let it of regularCategories.layout"
-            draggable="true"
-            (dragstart)="onDragStart($event, it.key)"
-            class="draggable-item"
-          >
-            {{ it.label }}
-          </div>
-        </div>
+<div class="tool-box-container">
+  <!-- Layer tree document -->
+  <div class="layer-tree-section">
+    <div class="layer-tree-header">
+      <span class="mdi mdi-layers"></span>
+      <span>Layers</span>
+    </div>
+    <div class="layer-tree-content">
+      <ng-container *ngIf="layerTree.length > 0">
+        <ng-container *ngFor="let layer of layerTree">
+          <ng-container
+            *ngTemplateOutlet="layerTreeTemplate; context: { $implicit: layer }"
+          ></ng-container>
+        </ng-container>
+      </ng-container>
+      <div *ngIf="layerTree.length === 0" class="layer-tree-empty">
+        <span class="mdi mdi-information-outline"></span>
+        <span>No layers yet. Drag components to start building.</span>
       </div>
     </div>
-    <div *ngIf="activeTab === 'symbols'" class="tab-panel">
-      <div
-        *ngFor="let it of symbolItems"
-        draggable="true"
-        (dragstart)="onDragStart($event, it.key)"
+
+    <!-- Recursive template for layer tree -->
+    <ng-template #layerTreeTemplate let-layer>
+      <div class="layer-tree-item">
+        <div
+          class="layer-item"
+          [class.expanded]="layer.expanded"
+          [class.selected]="layer.selected"
+          [style.padding-left.px]="layer.level * 16"
+          (click)="toggleLayer(layer)"
+        >
+          <span class="layer-toggle" *ngIf="layer.children && layer.children.length > 0">
+            <span
+              class="mdi"
+              [class.mdi-menu-down]="layer.expanded"
+              [class.mdi-menu-right]="!layer.expanded"
+            ></span>
+          </span>
+          <span class="layer-toggle" *ngIf="!layer.children || layer.children.length === 0">
+            <span>&nbsp;&nbsp;</span>
+          </span>
+          <span class="layer-icon">
+            <i class="mdi" [class]="layer.icon"></i>
+          </span>
+          <span class="layer-label">{{ layer.label }}</span>
+          <span class="layer-id">#{{ layer.id }}</span>
+        </div>
+        <div
+          class="layer-children"
+          *ngIf="layer.expanded && layer.children && layer.children.length > 0"
+        >
+          <ng-container *ngFor="let child of layer.children">
+            <ng-container
+              *ngTemplateOutlet="layerTreeTemplate; context: { $implicit: child }"
+            ></ng-container>
+          </ng-container>
+        </div>
+      </div>
+    </ng-template>
+  </div>
+
+  <!-- Tabs: Pages, Components, Attributes, Styles -->
+  <div class="tabs">
+    <div class="tab-headers">
+      <button
+        class="tab-header"
+        [class.active]="activeTab === 'assets'"
+        (click)="activeTab = 'assets'"
+        [appTabTooltip]="'Assets'"
+        tooltipPosition="right"
       >
-        {{ it.label }}
+        <span [class]="tabIcons.assets"></span>
+      </button>
+      <button
+        class="tab-header"
+        [class.active]="activeTab === 'components'"
+        (click)="activeTab = 'components'"
+        [appTabTooltip]="'Components'"
+        tooltipPosition="right"
+      >
+        <span [class]="tabIcons.components"></span>
+      </button>
+      <button
+        class="tab-header"
+        [class.active]="activeTab === 'attributes'"
+        (click)="activeTab = 'attributes'"
+        [appTabTooltip]="'Attributes'"
+        tooltipPosition="right"
+      >
+        <span [class]="tabIcons.attributes"></span>
+      </button>
+      <button
+        class="tab-header"
+        [class.active]="activeTab === 'styles'"
+        (click)="activeTab = 'styles'"
+        [appTabTooltip]="'Styles'"
+        tooltipPosition="right"
+      >
+        <span [class]="tabIcons.styles"></span>
+      </button>
+    </div>
+
+    <div class="tab-content" #tabContent>
+      <!-- Assets Tab Panel -->
+      <div class="tab-panel" *ngIf="activeTab === 'assets'">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-secondary"><i class="mdi mdi-image-multiple-outline"></i> Assets</span>
+          <button
+            class="btn btn-outline-primary btn-sm"
+            title="Upload asset"
+            (click)="triggerFileInput()"
+          >
+            <span>Upload</span>
+          </button>
+        </div>
+        <div class="assets-list">
+          <div *ngIf="assets.length === 0" class="text-secondary text-center p-4">
+            No assets available. Click "Upload" to add images or videos.
+          </div>
+          <div
+            *ngFor="let asset of assets"
+            class="asset-item"
+            draggable="true"
+            (dragstart)="onDragStartAsset($event, asset)"
+          >
+            <img *ngIf="asset.type === 'image'" [src]="asset.src" class="asset-thumbnail" />
+            <video
+              *ngIf="asset.type === 'video'"
+              [src]="asset.src"
+              class="asset-thumbnail"
+              muted
+            ></video>
+            <div class="asset-name">{{ asset.name }}</div>
+            <button class="asset-delete-btn" (click)="removeAsset(asset.id, $event)">
+              <span class="mdi mdi-close"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Components Tab Panel -->
+      <div class="tab-panel" *ngIf="activeTab === 'components'">
+        <!-- Sub-tabs: Components và Blocks -->
+        <div class="sub-tabs">
+          <div class="sub-tab-headers">
+            <button
+              class="sub-tab-header"
+              [class.active]="activeComponentSubTab === 'components'"
+              (click)="activeComponentSubTab = 'components'"
+            >
+              <span class="mdi mdi-cube-outline"></span>
+              <span>Components</span>
+            </button>
+            <button
+              class="sub-tab-header"
+              [class.active]="activeComponentSubTab === 'blocks'"
+              (click)="activeComponentSubTab = 'blocks'"
+            >
+              <span class="mdi mdi-view-grid-outline"></span>
+              <span>Blocks</span>
+            </button>
+          </div>
+
+          <div class="sub-tab-content">
+            <!-- Components Sub-tab -->
+            <div class="sub-tab-panel" *ngIf="activeComponentSubTab === 'components'">
+              <!-- Component Search -->
+              <div class="component-search-container">
+                <input
+                  type="text"
+                  class="component-search-input"
+                  placeholder="Search components"
+                  [(ngModel)]="componentSearchQuery"
+                />
+                <button
+                  class="component-search-clear-btn"
+                  (click)="clearComponentSearch()"
+                  *ngIf="componentSearchQuery"
+                  title="Clear"
+                >
+                  <span class="mdi mdi-close"></span>
+                </button>
+              </div>
+
+              <!-- Basic Category -->
+              <div
+                class="dropdown"
+                *ngIf="filteredRegularCategories.basic.length > 0 || !componentSearchQuery"
+              >
+                <button class="dropdown-header" (click)="toggleDropdown('basic')">
+                  <span>Basic</span>
+                  <span class="dropdown-icon" [class.open]="openedDropdowns['basic']">▼</span>
+                </button>
+                <div class="dropdown-content" *ngIf="openedDropdowns['basic']">
+                  <div
+                    *ngFor="let item of filteredRegularCategories.basic"
+                    class="draggable-item"
+                    draggable="true"
+                    (dragstart)="onDragStart($event, item.key)"
+                  >
+                    <span [class]="item.icon" [attr.aria-hidden]="true"></span>
+                    <span class="item-label">{{ item.label }}</span>
+                  </div>
+                  <div
+                    *ngIf="filteredRegularCategories.basic.length === 0 && componentSearchQuery"
+                    class="text-secondary text-center p-2"
+                  >
+                    No components found
+                  </div>
+                </div>
+              </div>
+
+              <!-- Forms Category -->
+              <div
+                class="dropdown"
+                *ngIf="filteredRegularCategories.forms.length > 0 || !componentSearchQuery"
+              >
+                <button class="dropdown-header" (click)="toggleDropdown('forms')">
+                  <span>Forms</span>
+                  <span class="dropdown-icon" [class.open]="openedDropdowns['forms']">▼</span>
+                </button>
+                <div class="dropdown-content" *ngIf="openedDropdowns['forms']">
+                  <div
+                    *ngFor="let item of filteredRegularCategories.forms"
+                    class="draggable-item"
+                    draggable="true"
+                    (dragstart)="onDragStart($event, item.key)"
+                  >
+                    <span [class]="item.icon" [attr.aria-hidden]="true"></span>
+                    <span class="item-label">{{ item.label }}</span>
+                  </div>
+                  <div
+                    *ngIf="filteredRegularCategories.forms.length === 0 && componentSearchQuery"
+                    class="text-secondary text-center p-2"
+                  >
+                    No components found
+                  </div>
+                </div>
+              </div>
+
+              <!-- Extra Category -->
+              <div
+                class="dropdown"
+                *ngIf="filteredRegularCategories.extra.length > 0 || !componentSearchQuery"
+              >
+                <button class="dropdown-header" (click)="toggleDropdown('extra')">
+                  <span>Extra</span>
+                  <span class="dropdown-icon" [class.open]="openedDropdowns['extra']">▼</span>
+                </button>
+                <div class="dropdown-content" *ngIf="openedDropdowns['extra']">
+                  <div
+                    *ngFor="let item of filteredRegularCategories.extra"
+                    class="draggable-item"
+                    draggable="true"
+                    (dragstart)="onDragStart($event, item.key)"
+                  >
+                    <span [class]="item.icon" [attr.aria-hidden]="true"></span>
+                    <span class="item-label">{{ item.label }}</span>
+                  </div>
+                  <div
+                    *ngIf="filteredRegularCategories.extra.length === 0 && componentSearchQuery"
+                    class="text-secondary text-center p-2"
+                  >
+                    No components found
+                  </div>
+                </div>
+              </div>
+
+              <!-- Layout Category -->
+              <div
+                class="dropdown"
+                *ngIf="filteredRegularCategories.layout.length > 0 || !componentSearchQuery"
+              >
+                <button class="dropdown-header" (click)="toggleDropdown('layout')">
+                  <span>Layout</span>
+                  <span class="dropdown-icon" [class.open]="openedDropdowns['layout']">▼</span>
+                </button>
+                <div class="dropdown-content" *ngIf="openedDropdowns['layout']">
+                  <div
+                    *ngFor="let item of filteredRegularCategories.layout"
+                    class="draggable-item"
+                    draggable="true"
+                    (dragstart)="onDragStart($event, item.key)"
+                  >
+                    <span [class]="item.icon" [attr.aria-hidden]="true"></span>
+                    <span class="item-label">{{ item.label }}</span>
+                  </div>
+                  <div
+                    *ngIf="filteredRegularCategories.layout.length === 0 && componentSearchQuery"
+                    class="text-secondary text-center p-2"
+                  >
+                    No components found
+                  </div>
+                </div>
+              </div>
+
+              <!-- No results message -->
+              <div
+                *ngIf="
+                  componentSearchQuery &&
+                  filteredRegularCategories.basic.length === 0 &&
+                  filteredRegularCategories.forms.length === 0 &&
+                  filteredRegularCategories.extra.length === 0 &&
+                  filteredRegularCategories.layout.length === 0
+                "
+                class="text-secondary text-center p-4"
+              >
+                No components found matching "{{ componentSearchQuery }}"
+              </div>
+            </div>
+
+            <!-- Blocks Sub-tab -->
+            <div class="sub-tab-panel" *ngIf="activeComponentSubTab === 'blocks'">
+              <!-- Block Search -->
+              <div class="block-search-container">
+                <input
+                  type="text"
+                  class="block-search-input"
+                  placeholder="Search blocks"
+                  [(ngModel)]="blockSearchQuery"
+                />
+                <div class="block-search-actions">
+                  <button
+                    class="block-search-action-btn"
+                    (click)="clearBlockSearch()"
+                    *ngIf="blockSearchQuery"
+                    title="Clear"
+                  >
+                    <span class="mdi mdi-close"></span>
+                  </button>
+                  <button class="block-search-action-btn" title="Add">
+                    <span class="mdi mdi-plus"></span>
+                  </button>
+                  <button class="block-search-action-btn" title="Remove">
+                    <span class="mdi mdi-minus"></span>
+                  </button>
+                </div>
+              </div>
+              <div class="blocks-list">
+                <div
+                  *ngFor="let block of filteredBlocks"
+                  class="block-item"
+                  draggable="true"
+                  (dragstart)="onDragStartBlock($event, block)"
+                >
+                  <span class="mdi mdi-file-document-outline"></span>
+                  <span class="block-label">{{ block.label }}</span>
+                </div>
+                <div *ngIf="filteredBlocks.length === 0" class="text-secondary text-center p-4">
+                  <div *ngIf="blockSearchQuery">No blocks found</div>
+                  <div *ngIf="!blockSearchQuery">No blocks available</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Attributes Tab Panel -->
+      <div class="tab-panel" *ngIf="activeTab === 'attributes'">
+        <!-- Sub-tabs: Content, Style, Advanced -->
+        <div class="sub-tabs">
+          <div class="sub-tab-headers">
+            <button
+              class="sub-tab-header"
+              [class.active]="activeAttributeSubTab === 'content'"
+              (click)="activeAttributeSubTab = 'content'"
+            >
+              <span class="mdi mdi-folder-outline"></span>
+              <span>Content</span>
+            </button>
+            <button
+              class="sub-tab-header"
+              [class.active]="activeAttributeSubTab === 'style'"
+              (click)="activeAttributeSubTab = 'style'"
+            >
+              <span class="mdi mdi-format-color-fill"></span>
+              <span>Style</span>
+            </button>
+            <button
+              class="sub-tab-header"
+              [class.active]="activeAttributeSubTab === 'advanced'"
+              (click)="activeAttributeSubTab = 'advanced'"
+            >
+              <span class="mdi mdi-cog-outline"></span>
+              <span>Advanced</span>
+            </button>
+          </div>
+
+          <div class="sub-tab-content">
+            <!-- Content Sub-tab -->
+            <div class="sub-tab-panel" *ngIf="activeAttributeSubTab === 'content'">
+              <!-- Element Section -->
+              <div class="attribute-section">
+                <div class="attribute-section-header" (click)="toggleAttributeSection('element')">
+                  <span>Element</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="attributeSectionsExpanded['element']"
+                    [class.mdi-menu-right]="!attributeSectionsExpanded['element']"
+                  ></span>
+                </div>
+                <div class="attribute-section-content" *ngIf="attributeSectionsExpanded['element']">
+                  <div class="attribute-field-row">
+                    <div class="attribute-field">
+                      <label>Id</label>
+                      <input
+                        type="text"
+                        class="attribute-input"
+                        [value]="contentId"
+                        (input)="updateContentId($any($event.target).value)"
+                        placeholder="Enter id"
+                      />
+                    </div>
+                    <div class="attribute-field" *ngIf="isTextElement()">
+                      <label>Title</label>
+                      <input
+                        type="text"
+                        class="attribute-input"
+                        [value]="contentTitle"
+                        (input)="updateContentTitle($any($event.target).value)"
+                        placeholder="Enter title/text"
+                      />
+                    </div>
+                  </div>
+                  <div class="attribute-field">
+                    <label>Class</label>
+                    <input
+                      type="text"
+                      class="attribute-input attribute-input-full"
+                      [value]="contentClass"
+                      (input)="updateContentClass($any($event.target).value)"
+                      placeholder="Enter class names"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- General Section -->
+              <div class="attribute-section">
+                <div class="attribute-section-header" (click)="toggleAttributeSection('general')">
+                  <span>General</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="attributeSectionsExpanded['general']"
+                    [class.mdi-menu-right]="!attributeSectionsExpanded['general']"
+                  ></span>
+                </div>
+                <div class="attribute-section-content" *ngIf="attributeSectionsExpanded['general']">
+                  <!-- General attributes will go here if needed -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Style Sub-tab -->
+            <div class="sub-tab-panel" *ngIf="activeAttributeSubTab === 'style'">
+              <!-- State Dropdown and Reset Button -->
+              <div class="style-state-controls">
+                <div class="style-state-dropdown-container">
+                  <button
+                    class="style-state-dropdown-btn"
+                    (click)="toggleStyleStateDropdown()"
+                    (blur)="styleStateDropdownOpen = false"
+                  >
+                    <span>{{ activeStyleState }}</span>
+                    <span
+                      class="mdi"
+                      [class.mdi-menu-down]="!styleStateDropdownOpen"
+                      [class.mdi-menu-up]="styleStateDropdownOpen"
+                    ></span>
+                  </button>
+                  <div class="style-state-dropdown-menu" *ngIf="styleStateDropdownOpen">
+                    <div
+                      *ngFor="let state of styleStates"
+                      class="style-state-dropdown-item"
+                      [class.active]="activeStyleState === state"
+                      (click)="selectStyleState(state)"
+                    >
+                      <span *ngIf="activeStyleState === state" class="mdi mdi-check"></span>
+                      <span>{{ state }}</span>
+                    </div>
+                  </div>
+                </div>
+                <button class="style-reset-btn" (click)="resetStyleState()">
+                  <span class="mdi mdi-refresh"></span>
+                  <span>Reset</span>
+                </button>
+              </div>
+
+              <!-- Display Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleStyleAttributeSection('display')"
+                >
+                  <span>Display</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="styleAttributeSectionsExpanded['display']"
+                    [class.mdi-menu-right]="!styleAttributeSectionsExpanded['display']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="styleAttributeSectionsExpanded['display']"
+                >
+                  <!-- Display Property -->
+                  <div class="style-property-field">
+                    <label>Display</label>
+                    <select
+                      class="style-property-select"
+                      [value]="displayProperties.display"
+                      (change)="updateDisplayProperty('display', $any($event.target).value)"
+                    >
+                      <option *ngFor="let opt of displayOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+
+                  <!-- Position Property -->
+                  <div class="style-property-field">
+                    <label>Position</label>
+                    <select
+                      class="style-property-select"
+                      [value]="displayProperties.position"
+                      (change)="updateDisplayProperty('position', $any($event.target).value)"
+                    >
+                      <option *ngFor="let opt of positionOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+
+                  <!-- Top, Left, Bottom, Right -->
+                  <div class="style-property-row">
+                    <div class="style-property-field">
+                      <label>Top</label>
+                      <select
+                        class="style-property-select"
+                        [value]="displayProperties.top"
+                        (change)="updateDisplayProperty('top', $any($event.target).value)"
+                      >
+                        <option *ngFor="let opt of positionValueOptions" [value]="opt">
+                          {{ opt }}
+                        </option>
+                      </select>
+                    </div>
+                    <div class="style-property-field">
+                      <label>Left</label>
+                      <select
+                        class="style-property-select"
+                        [value]="displayProperties.left"
+                        (change)="updateDisplayProperty('left', $any($event.target).value)"
+                      >
+                        <option *ngFor="let opt of positionValueOptions" [value]="opt">
+                          {{ opt }}
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="style-property-row">
+                    <div class="style-property-field">
+                      <label>Bottom</label>
+                      <select
+                        class="style-property-select"
+                        [value]="displayProperties.bottom"
+                        (change)="updateDisplayProperty('bottom', $any($event.target).value)"
+                      >
+                        <option *ngFor="let opt of positionValueOptions" [value]="opt">
+                          {{ opt }}
+                        </option>
+                      </select>
+                    </div>
+                    <div class="style-property-field">
+                      <label>Right</label>
+                      <select
+                        class="style-property-select"
+                        [value]="displayProperties.right"
+                        (change)="updateDisplayProperty('right', $any($event.target).value)"
+                      >
+                        <option *ngFor="let opt of positionValueOptions" [value]="opt">
+                          {{ opt }}
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- Float Property (Segmented Control) -->
+                  <div class="style-property-field">
+                    <label>Float</label>
+                    <div class="style-segmented-control">
+                      <button
+                        *ngFor="let opt of floatOptions"
+                        class="style-segment-btn"
+                        [class.active]="displayProperties.float === opt"
+                        (click)="updateFloat(opt)"
+                        [title]="opt"
+                      >
+                        <span *ngIf="opt === 'none'" class="mdi mdi-close"></span>
+                        <span *ngIf="opt === 'left'" class="mdi mdi-format-align-left"></span>
+                        <span *ngIf="opt === 'right'" class="mdi mdi-format-align-right"></span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Opacity Property -->
+                  <div class="style-property-field">
+                    <label>Opacity</label>
+                    <div class="style-opacity-control">
+                      <input
+                        type="number"
+                        class="style-opacity-input"
+                        [value]="displayProperties.opacity"
+                        (input)="updateOpacity(parseNumber($any($event.target).value))"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                      />
+                      <input
+                        type="range"
+                        class="style-opacity-slider"
+                        [value]="displayProperties.opacity"
+                        (input)="updateOpacity(parseNumber($any($event.target).value))"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- Background Color -->
+                  <div class="style-property-field">
+                    <label>Background</label>
+                    <div class="style-color-control">
+                      <input
+                        type="text"
+                        class="style-color-input"
+                        [value]="displayProperties.background"
+                        (input)="updateDisplayProperty('background', $any($event.target).value)"
+                      />
+                      <input
+                        type="color"
+                        class="style-color-picker"
+                        [value]="rgbToHex(displayProperties.background)"
+                        (input)="
+                          updateDisplayProperty('background', hexToRgba($any($event.target).value))
+                        "
+                      />
+                    </div>
+                  </div>
+
+                  <!-- Text Color -->
+                  <div class="style-property-field">
+                    <label>Text Color</label>
+                    <div class="style-color-control">
+                      <input
+                        type="text"
+                        class="style-color-input"
+                        [value]="displayProperties.color"
+                        (input)="updateDisplayProperty('color', $any($event.target).value)"
+                      />
+                      <input
+                        type="color"
+                        class="style-color-picker"
+                        [value]="rgbToHex(displayProperties.color)"
+                        (input)="
+                          updateDisplayProperty('color', hexToRgb($any($event.target).value))
+                        "
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Typography Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleStyleAttributeSection('typography')"
+                >
+                  <span>Typography</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="styleAttributeSectionsExpanded['typography']"
+                    [class.mdi-menu-right]="!styleAttributeSectionsExpanded['typography']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="styleAttributeSectionsExpanded['typography']"
+                >
+                  <div class="style-property-row">
+                    <div class="style-property-field with-unit">
+                      <label>Font size</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="typographyProperties.fontSize"
+                          (input)="updateTypographyProperty('fontSize', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="typographyProperties.fontSizeUnit"
+                          (change)="
+                            updateTypographyProperty('fontSizeUnit', $any($event.target).value)
+                          "
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="style-property-field">
+                      <label>Font weight</label>
+                      <select
+                        class="style-property-select"
+                        [value]="typographyProperties.fontWeight"
+                        (change)="updateTypographyProperty('fontWeight', $any($event.target).value)"
+                      >
+                        <option *ngFor="let opt of fontWeightOptions" [value]="opt">
+                          {{ opt }}
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="style-property-field">
+                    <label>Font family</label>
+                    <select
+                      class="style-property-select"
+                      [value]="typographyProperties.fontFamily"
+                      (change)="updateTypographyProperty('fontFamily', $any($event.target).value)"
+                    >
+                      <option value="">- Select -</option>
+                      <option *ngFor="let opt of fontFamilyOptions" [value]="opt">{{ opt }}</option>
+                    </select>
+                  </div>
+
+                  <div class="style-property-field">
+                    <label>Text align</label>
+                    <div class="segmented-control">
+                      <button
+                        [class.active]="typographyProperties.textAlign === 'left'"
+                        (click)="updateTypographyProperty('textAlign', 'left')"
+                      >
+                        <span class="mdi mdi-format-align-left"></span>
+                      </button>
+                      <button
+                        [class.active]="typographyProperties.textAlign === 'center'"
+                        (click)="updateTypographyProperty('textAlign', 'center')"
+                      >
+                        <span class="mdi mdi-format-align-center"></span>
+                      </button>
+                      <button
+                        [class.active]="typographyProperties.textAlign === 'right'"
+                        (click)="updateTypographyProperty('textAlign', 'right')"
+                      >
+                        <span class="mdi mdi-format-align-right"></span>
+                      </button>
+                      <button
+                        [class.active]="typographyProperties.textAlign === 'justify'"
+                        (click)="updateTypographyProperty('textAlign', 'justify')"
+                      >
+                        <span class="mdi mdi-format-align-justify"></span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="style-property-row">
+                    <div class="style-property-field with-unit">
+                      <label>Line height</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="typographyProperties.lineHeight"
+                          (input)="
+                            updateTypographyProperty('lineHeight', $any($event.target).value)
+                          "
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="typographyProperties.lineHeightUnit"
+                          (change)="
+                            updateTypographyProperty('lineHeightUnit', $any($event.target).value)
+                          "
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="style-property-field with-unit">
+                      <label>Letter spacing</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="typographyProperties.letterSpacing"
+                          (input)="
+                            $event.stopPropagation();
+                            updateTypographyProperty('letterSpacing', $any($event.target).value)
+                          "
+                          (blur)="$event.stopPropagation()"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="typographyProperties.letterSpacingUnit"
+                          (change)="
+                            $event.stopPropagation();
+                            updateTypographyProperty('letterSpacingUnit', $any($event.target).value)
+                          "
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="style-property-field">
+                    <label>Text decoration</label>
+                    <div class="segmented-control">
+                      <button
+                        [class.active]="typographyProperties.textDecoration === 'none'"
+                        (click)="updateTypographyProperty('textDecoration', 'none')"
+                      >
+                        <span class="mdi mdi-format-clear"></span>
+                      </button>
+                      <button
+                        [class.active]="typographyProperties.textDecoration === 'underline'"
+                        (click)="updateTypographyProperty('textDecoration', 'underline')"
+                      >
+                        <span class="mdi mdi-format-underline"></span>
+                      </button>
+                      <button
+                        [class.active]="typographyProperties.textDecoration === 'overline'"
+                        (click)="updateTypographyProperty('textDecoration', 'overline')"
+                      >
+                        <span class="mdi mdi-format-overline"></span>
+                      </button>
+                      <button
+                        [class.active]="typographyProperties.textDecoration === 'line-through'"
+                        (click)="updateTypographyProperty('textDecoration', 'line-through')"
+                      >
+                        <span class="mdi mdi-format-strikethrough-variant"></span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="style-property-row">
+                    <div class="style-property-field with-color">
+                      <label>Decoration Color</label>
+                      <div class="style-property-color-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="typographyProperties.decorationColor"
+                          (input)="
+                            $event.stopPropagation();
+                            updateTypographyProperty('decorationColor', $any($event.target).value)
+                          "
+                          (blur)="$event.stopPropagation()"
+                        />
+                        <input
+                          type="color"
+                          class="style-property-color"
+                          [value]="rgbToHex(typographyProperties.decorationColor)"
+                          (input)="
+                            $event.stopPropagation();
+                            updateTypographyProperty(
+                              'decorationColor',
+                              hexToRgb($any($event.target).value)
+                            )
+                          "
+                          (change)="$event.stopPropagation()"
+                        />
+                      </div>
+                    </div>
+                    <div class="style-property-field">
+                      <label>Decoration style</label>
+                      <select
+                        class="style-property-select"
+                        [value]="typographyProperties.decorationStyle"
+                        (change)="
+                          $event.stopPropagation();
+                          updateTypographyProperty('decorationStyle', $any($event.target).value)
+                        "
+                      >
+                        <option *ngFor="let opt of decorationStyleOptions" [value]="opt">
+                          {{ opt }}
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Size Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleStyleAttributeSection('size')"
+                >
+                  <span>Size</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="styleAttributeSectionsExpanded['size']"
+                    [class.mdi-menu-right]="!styleAttributeSectionsExpanded['size']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="styleAttributeSectionsExpanded['size']"
+                >
+                  <div class="style-property-row">
+                    <div class="style-property-field with-unit">
+                      <label>Width</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="sizeProperties.width"
+                          (input)="updateSizeProperty('width', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="sizeProperties.widthUnit"
+                          (change)="updateSizeProperty('widthUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="style-property-field with-unit">
+                      <label>Height</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="sizeProperties.height"
+                          (input)="updateSizeProperty('height', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="sizeProperties.heightUnit"
+                          (change)="updateSizeProperty('heightUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="style-property-row">
+                    <div class="style-property-field with-unit">
+                      <label>Min Width</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="sizeProperties.minWidth"
+                          (input)="updateSizeProperty('minWidth', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="sizeProperties.minWidthUnit"
+                          (change)="updateSizeProperty('minWidthUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="style-property-field with-unit">
+                      <label>Min Height</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="sizeProperties.minHeight"
+                          (input)="updateSizeProperty('minHeight', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="sizeProperties.minHeightUnit"
+                          (change)="updateSizeProperty('minHeightUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="style-property-row">
+                    <div class="style-property-field with-unit">
+                      <label>Max Width</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="sizeProperties.maxWidth"
+                          (input)="updateSizeProperty('maxWidth', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="sizeProperties.maxWidthUnit"
+                          (change)="updateSizeProperty('maxWidthUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="style-property-field with-unit">
+                      <label>Max Height</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="sizeProperties.maxHeight"
+                          (input)="updateSizeProperty('maxHeight', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="sizeProperties.maxHeightUnit"
+                          (change)="updateSizeProperty('maxHeightUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Margin Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleStyleAttributeSection('margin')"
+                >
+                  <span>Margin</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="styleAttributeSectionsExpanded['margin']"
+                    [class.mdi-menu-right]="!styleAttributeSectionsExpanded['margin']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="styleAttributeSectionsExpanded['margin']"
+                >
+                  <div class="style-property-row">
+                    <div class="style-property-field with-unit">
+                      <label>Top</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="marginProperties.top"
+                          (input)="updateMarginProperty('top', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="marginProperties.topUnit"
+                          (change)="updateMarginProperty('topUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="style-property-field with-unit">
+                      <label>Right</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="marginProperties.right"
+                          (input)="updateMarginProperty('right', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="marginProperties.rightUnit"
+                          (change)="updateMarginProperty('rightUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="style-property-row">
+                    <div class="style-property-field with-unit">
+                      <label>Bottom</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="marginProperties.bottom"
+                          (input)="updateMarginProperty('bottom', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="marginProperties.bottomUnit"
+                          (change)="updateMarginProperty('bottomUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="style-property-field with-unit">
+                      <label>Left</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="marginProperties.left"
+                          (input)="updateMarginProperty('left', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="marginProperties.leftUnit"
+                          (change)="updateMarginProperty('leftUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Padding Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleStyleAttributeSection('padding')"
+                >
+                  <span>Padding</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="styleAttributeSectionsExpanded['padding']"
+                    [class.mdi-menu-right]="!styleAttributeSectionsExpanded['padding']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="styleAttributeSectionsExpanded['padding']"
+                >
+                  <div class="style-property-row">
+                    <div class="style-property-field with-unit">
+                      <label>Top</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="paddingProperties.top"
+                          (input)="updatePaddingProperty('top', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="paddingProperties.topUnit"
+                          (change)="updatePaddingProperty('topUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="style-property-field with-unit">
+                      <label>Right</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="paddingProperties.right"
+                          (input)="updatePaddingProperty('right', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="paddingProperties.rightUnit"
+                          (change)="updatePaddingProperty('rightUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="style-property-row">
+                    <div class="style-property-field with-unit">
+                      <label>Bottom</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="paddingProperties.bottom"
+                          (input)="updatePaddingProperty('bottom', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="paddingProperties.bottomUnit"
+                          (change)="updatePaddingProperty('bottomUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="style-property-field with-unit">
+                      <label>Left</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="paddingProperties.left"
+                          (input)="updatePaddingProperty('left', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="paddingProperties.leftUnit"
+                          (change)="updatePaddingProperty('leftUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Border Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleStyleAttributeSection('border')"
+                >
+                  <span>Border</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="styleAttributeSectionsExpanded['border']"
+                    [class.mdi-menu-right]="!styleAttributeSectionsExpanded['border']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="styleAttributeSectionsExpanded['border']"
+                >
+                  <div class="style-property-field">
+                    <label>Style</label>
+                    <select
+                      class="style-property-select"
+                      [value]="borderProperties.style"
+                      (change)="updateBorderProperty('style', $any($event.target).value)"
+                    >
+                      <option *ngFor="let opt of borderStyleOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="style-property-row">
+                    <div class="style-property-field with-unit">
+                      <label>Width</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="borderProperties.width"
+                          (input)="updateBorderProperty('width', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="borderProperties.widthUnit"
+                          (change)="updateBorderProperty('widthUnit', $any($event.target).value)"
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="style-property-field with-color">
+                      <label>Color</label>
+                      <div class="style-property-color-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="borderProperties.color"
+                          (input)="updateBorderProperty('color', $any($event.target).value)"
+                        />
+                        <input
+                          type="color"
+                          class="style-property-color"
+                          [value]="rgbToHex(borderProperties.color)"
+                          (input)="
+                            updateBorderProperty('color', hexToRgb($any($event.target).value))
+                          "
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Border radius Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleStyleAttributeSection('borderRadius')"
+                >
+                  <span>Border radius</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="styleAttributeSectionsExpanded['borderRadius']"
+                    [class.mdi-menu-right]="!styleAttributeSectionsExpanded['borderRadius']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="styleAttributeSectionsExpanded['borderRadius']"
+                >
+                  <div class="style-property-row">
+                    <div class="style-property-field with-unit">
+                      <label>Top Left</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="borderRadiusProperties.topLeft"
+                          (input)="updateBorderRadiusProperty('topLeft', $any($event.target).value)"
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="borderRadiusProperties.topLeftUnit"
+                          (change)="
+                            updateBorderRadiusProperty('topLeftUnit', $any($event.target).value)
+                          "
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="style-property-field with-unit">
+                      <label>Top Right</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="borderRadiusProperties.topRight"
+                          (input)="
+                            updateBorderRadiusProperty('topRight', $any($event.target).value)
+                          "
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="borderRadiusProperties.topRightUnit"
+                          (change)="
+                            updateBorderRadiusProperty('topRightUnit', $any($event.target).value)
+                          "
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="style-property-row">
+                    <div class="style-property-field with-unit">
+                      <label>Bottom Left</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="borderRadiusProperties.bottomLeft"
+                          (input)="
+                            updateBorderRadiusProperty('bottomLeft', $any($event.target).value)
+                          "
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="borderRadiusProperties.bottomLeftUnit"
+                          (change)="
+                            updateBorderRadiusProperty('bottomLeftUnit', $any($event.target).value)
+                          "
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="style-property-field with-unit">
+                      <label>Bottom Right</label>
+                      <div class="style-property-input-group">
+                        <input
+                          type="text"
+                          class="style-property-input"
+                          [value]="borderRadiusProperties.bottomRight"
+                          (input)="
+                            updateBorderRadiusProperty('bottomRight', $any($event.target).value)
+                          "
+                        />
+                        <select
+                          class="style-property-unit"
+                          [value]="borderRadiusProperties.bottomRightUnit"
+                          (change)="
+                            updateBorderRadiusProperty('bottomRightUnit', $any($event.target).value)
+                          "
+                        >
+                          <option *ngFor="let opt of unitOptions" [value]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Background Image Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleStyleAttributeSection('backgroundImage')"
+                >
+                  <span>Background Image</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="styleAttributeSectionsExpanded['backgroundImage']"
+                    [class.mdi-menu-right]="!styleAttributeSectionsExpanded['backgroundImage']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="styleAttributeSectionsExpanded['backgroundImage']"
+                >
+                  <div class="style-property-field">
+                    <label>Image</label>
+                    <div class="background-image-preview">
+                      <img
+                        [src]="backgroundImageProperties.image"
+                        *ngIf="
+                          backgroundImageProperties.image !== 'none' &&
+                          backgroundImageProperties.image
+                        "
+                      />
+                      <span
+                        class="mdi mdi-image-area"
+                        *ngIf="
+                          backgroundImageProperties.image === 'none' ||
+                          !backgroundImageProperties.image
+                        "
+                      ></span>
+                    </div>
+                    <input
+                      type="text"
+                      class="style-property-input"
+                      placeholder="Enter image URL"
+                      [value]="
+                        backgroundImageProperties.image === 'none'
+                          ? ''
+                          : backgroundImageProperties.image
+                      "
+                      (input)="updateBackgroundImageProperty('image', $any($event.target).value)"
+                    />
+                    <button class="style-property-btn">Set Image</button>
+                  </div>
+
+                  <div class="style-property-field">
+                    <label>Repeat</label>
+                    <select
+                      class="style-property-select"
+                      [value]="backgroundImageProperties.repeat"
+                      (change)="updateBackgroundImageProperty('repeat', $any($event.target).value)"
+                    >
+                      <option *ngFor="let opt of backgroundRepeatOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+
+                  <div class="style-property-field">
+                    <label>Size</label>
+                    <select
+                      class="style-property-select"
+                      [value]="backgroundImageProperties.size"
+                      (change)="updateBackgroundImageProperty('size', $any($event.target).value)"
+                    >
+                      <option *ngFor="let opt of backgroundSizeOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+
+                  <div class="style-property-row">
+                    <div class="style-property-field">
+                      <label>Position X</label>
+                      <select
+                        class="style-property-select"
+                        [value]="backgroundImageProperties.positionX"
+                        (change)="
+                          updateBackgroundImageProperty('positionX', $any($event.target).value)
+                        "
+                      >
+                        <option *ngFor="let opt of backgroundPositionOptions" [value]="opt">
+                          {{ opt }}
+                        </option>
+                      </select>
+                    </div>
+                    <div class="style-property-field">
+                      <label>Position Y</label>
+                      <select
+                        class="style-property-select"
+                        [value]="backgroundImageProperties.positionY"
+                        (change)="
+                          updateBackgroundImageProperty('positionY', $any($event.target).value)
+                        "
+                      >
+                        <option *ngFor="let opt of backgroundPositionOptions" [value]="opt">
+                          {{ opt }}
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Advanced Sub-tab -->
+            <div class="sub-tab-panel" *ngIf="activeAttributeSubTab === 'advanced'">
+              <!-- Transform Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleAdvancedAttributeSection('transform')"
+                >
+                  <span>Transform</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="advancedAttributeSectionsExpanded['transform']"
+                    [class.mdi-menu-right]="!advancedAttributeSectionsExpanded['transform']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="advancedAttributeSectionsExpanded['transform']"
+                >
+                  <div class="style-property-row">
+                    <div class="style-property-field">
+                      <label>Translate X</label>
+                      <input
+                        type="text"
+                        class="style-property-input"
+                        [value]="transformProperties.translateX"
+                        (input)="updateTransformProperty('translateX', $any($event.target).value)"
+                        placeholder="0px"
+                      />
+                    </div>
+                    <div class="style-property-field">
+                      <label>Translate Y</label>
+                      <input
+                        type="text"
+                        class="style-property-input"
+                        [value]="transformProperties.translateY"
+                        (input)="updateTransformProperty('translateY', $any($event.target).value)"
+                        placeholder="0px"
+                      />
+                    </div>
+                  </div>
+                  <div class="style-property-field">
+                    <label>Rotate</label>
+                    <input
+                      type="text"
+                      class="style-property-input"
+                      [value]="transformProperties.rotate"
+                      (input)="updateTransformProperty('rotate', $any($event.target).value)"
+                      placeholder="0deg"
+                    />
+                  </div>
+                  <div class="style-property-row">
+                    <div class="style-property-field">
+                      <label>Scale X</label>
+                      <input
+                        type="text"
+                        class="style-property-input"
+                        [value]="transformProperties.scaleX"
+                        (input)="updateTransformProperty('scaleX', $any($event.target).value)"
+                        placeholder="1"
+                      />
+                    </div>
+                    <div class="style-property-field">
+                      <label>Scale Y</label>
+                      <input
+                        type="text"
+                        class="style-property-input"
+                        [value]="transformProperties.scaleY"
+                        (input)="updateTransformProperty('scaleY', $any($event.target).value)"
+                        placeholder="1"
+                      />
+                    </div>
+                  </div>
+                  <div class="style-property-row">
+                    <div class="style-property-field">
+                      <label>Skew X</label>
+                      <input
+                        type="text"
+                        class="style-property-input"
+                        [value]="transformProperties.skewX"
+                        (input)="updateTransformProperty('skewX', $any($event.target).value)"
+                        placeholder="0deg"
+                      />
+                    </div>
+                    <div class="style-property-field">
+                      <label>Skew Y</label>
+                      <input
+                        type="text"
+                        class="style-property-input"
+                        [value]="transformProperties.skewY"
+                        (input)="updateTransformProperty('skewY', $any($event.target).value)"
+                        placeholder="0deg"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Transition Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleAdvancedAttributeSection('transition')"
+                >
+                  <span>Transition</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="advancedAttributeSectionsExpanded['transition']"
+                    [class.mdi-menu-right]="!advancedAttributeSectionsExpanded['transition']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="advancedAttributeSectionsExpanded['transition']"
+                >
+                  <div class="style-property-field">
+                    <label>Property</label>
+                    <input
+                      type="text"
+                      class="style-property-input"
+                      [value]="transitionProperties.property"
+                      (input)="updateTransitionProperty('property', $any($event.target).value)"
+                      placeholder="all"
+                    />
+                  </div>
+                  <div class="style-property-field">
+                    <label>Duration</label>
+                    <input
+                      type="text"
+                      class="style-property-input"
+                      [value]="transitionProperties.duration"
+                      (input)="updateTransitionProperty('duration', $any($event.target).value)"
+                      placeholder="0.3s"
+                    />
+                  </div>
+                  <div class="style-property-field">
+                    <label>Timing Function</label>
+                    <select
+                      class="style-property-select"
+                      [value]="transitionProperties.timingFunction"
+                      (change)="
+                        updateTransitionProperty('timingFunction', $any($event.target).value)
+                      "
+                    >
+                      <option *ngFor="let opt of timingFunctionOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="style-property-field">
+                    <label>Delay</label>
+                    <input
+                      type="text"
+                      class="style-property-input"
+                      [value]="transitionProperties.delay"
+                      (input)="updateTransitionProperty('delay', $any($event.target).value)"
+                      placeholder="0s"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Animation Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleAdvancedAttributeSection('animation')"
+                >
+                  <span>Animation</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="advancedAttributeSectionsExpanded['animation']"
+                    [class.mdi-menu-right]="!advancedAttributeSectionsExpanded['animation']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="advancedAttributeSectionsExpanded['animation']"
+                >
+                  <div class="style-property-field">
+                    <label>Name</label>
+                    <input
+                      type="text"
+                      class="style-property-input"
+                      [value]="animationProperties.name"
+                      (input)="updateAnimationProperty('name', $any($event.target).value)"
+                      placeholder="animation-name"
+                    />
+                  </div>
+                  <div class="style-property-field">
+                    <label>Duration</label>
+                    <input
+                      type="text"
+                      class="style-property-input"
+                      [value]="animationProperties.duration"
+                      (input)="updateAnimationProperty('duration', $any($event.target).value)"
+                      placeholder="1s"
+                    />
+                  </div>
+                  <div class="style-property-field">
+                    <label>Timing Function</label>
+                    <select
+                      class="style-property-select"
+                      [value]="animationProperties.timingFunction"
+                      (change)="
+                        updateAnimationProperty('timingFunction', $any($event.target).value)
+                      "
+                    >
+                      <option *ngFor="let opt of timingFunctionOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="style-property-field">
+                    <label>Delay</label>
+                    <input
+                      type="text"
+                      class="style-property-input"
+                      [value]="animationProperties.delay"
+                      (input)="updateAnimationProperty('delay', $any($event.target).value)"
+                      placeholder="0s"
+                    />
+                  </div>
+                  <div class="style-property-field">
+                    <label>Iteration Count</label>
+                    <input
+                      type="text"
+                      class="style-property-input"
+                      [value]="animationProperties.iterationCount"
+                      (input)="updateAnimationProperty('iterationCount', $any($event.target).value)"
+                      placeholder="1"
+                    />
+                  </div>
+                  <div class="style-property-field">
+                    <label>Direction</label>
+                    <select
+                      class="style-property-select"
+                      [value]="animationProperties.direction"
+                      (change)="updateAnimationProperty('direction', $any($event.target).value)"
+                    >
+                      <option *ngFor="let opt of animationDirectionOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Layout Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleAdvancedAttributeSection('layout')"
+                >
+                  <span>Layout</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="advancedAttributeSectionsExpanded['layout']"
+                    [class.mdi-menu-right]="!advancedAttributeSectionsExpanded['layout']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="advancedAttributeSectionsExpanded['layout']"
+                >
+                  <div class="style-property-field">
+                    <label>Z-Index</label>
+                    <input
+                      type="text"
+                      class="style-property-input"
+                      [value]="layoutProperties.zIndex"
+                      (input)="updateLayoutProperty('zIndex', $any($event.target).value)"
+                      placeholder="auto"
+                    />
+                  </div>
+                  <div class="style-property-field">
+                    <label>Overflow X</label>
+                    <select
+                      class="style-property-select"
+                      [value]="layoutProperties.overflowX"
+                      (change)="updateLayoutProperty('overflowX', $any($event.target).value)"
+                    >
+                      <option *ngFor="let opt of overflowOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="style-property-field">
+                    <label>Overflow Y</label>
+                    <select
+                      class="style-property-select"
+                      [value]="layoutProperties.overflowY"
+                      (change)="updateLayoutProperty('overflowY', $any($event.target).value)"
+                    >
+                      <option *ngFor="let opt of overflowOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Interaction Section -->
+              <div class="style-attribute-section">
+                <div
+                  class="style-attribute-section-header"
+                  (click)="toggleAdvancedAttributeSection('interaction')"
+                >
+                  <span>Interaction</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="advancedAttributeSectionsExpanded['interaction']"
+                    [class.mdi-menu-right]="!advancedAttributeSectionsExpanded['interaction']"
+                  ></span>
+                </div>
+                <div
+                  class="style-attribute-section-content"
+                  *ngIf="advancedAttributeSectionsExpanded['interaction']"
+                >
+                  <div class="style-property-field">
+                    <label>Cursor</label>
+                    <select
+                      class="style-property-select"
+                      [value]="interactionProperties.cursor"
+                      (change)="updateInteractionProperty('cursor', $any($event.target).value)"
+                    >
+                      <option *ngFor="let opt of cursorOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="style-property-field">
+                    <label>Pointer Events</label>
+                    <select
+                      class="style-property-select"
+                      [value]="interactionProperties.pointerEvents"
+                      (change)="
+                        updateInteractionProperty('pointerEvents', $any($event.target).value)
+                      "
+                    >
+                      <option *ngFor="let opt of pointerEventsOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="style-property-field">
+                    <label>User Select</label>
+                    <select
+                      class="style-property-select"
+                      [value]="interactionProperties.userSelect"
+                      (change)="updateInteractionProperty('userSelect', $any($event.target).value)"
+                    >
+                      <option *ngFor="let opt of userSelectOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="style-property-field">
+                    <label>Visibility</label>
+                    <select
+                      class="style-property-select"
+                      [value]="interactionProperties.visibility"
+                      (change)="updateInteractionProperty('visibility', $any($event.target).value)"
+                    >
+                      <option *ngFor="let opt of visibilityOptions" [value]="opt">
+                        {{ opt }}
+                      </option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Styles Tab Panel -->
+      <div class="tab-panel" *ngIf="activeTab === 'styles'">
+        <!-- Sub-tabs: Variables và CSS -->
+        <div class="sub-tabs">
+          <div class="sub-tab-headers">
+            <button
+              class="sub-tab-header"
+              [class.active]="activeStyleSubTab === 'variables'"
+              (click)="activeStyleSubTab = 'variables'"
+            >
+              <span class="mdi mdi-palette-outline"></span>
+              <span>Variables</span>
+            </button>
+            <button
+              class="sub-tab-header"
+              [class.active]="activeStyleSubTab === 'css'"
+              (click)="activeStyleSubTab = 'css'"
+            >
+              <span class="mdi mdi-code-tags"></span>
+              <span>Css</span>
+            </button>
+          </div>
+
+          <div class="sub-tab-content">
+            <!-- Variables Sub-tab -->
+            <div class="sub-tab-panel" *ngIf="activeStyleSubTab === 'variables'">
+              <!-- Bootstrap Variables Section -->
+              <div class="style-variable-section">
+                <div
+                  class="style-variable-header"
+                  (click)="toggleStyleVariableSection('bootstrap')"
+                >
+                  <span>Bootstrap Variables</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="styleVariablesExpanded['bootstrap']"
+                    [class.mdi-menu-right]="!styleVariablesExpanded['bootstrap']"
+                  ></span>
+                </div>
+                <div class="style-variable-content" *ngIf="styleVariablesExpanded['bootstrap']">
+                  <!-- Bootstrap variables sẽ được thêm ở đây -->
+                </div>
+              </div>
+
+              <!-- Font Section -->
+              <div class="style-variable-section">
+                <div class="style-variable-header" (click)="toggleStyleVariableSection('font')">
+                  <span>Font</span>
+                  <span
+                    class="mdi"
+                    [class.mdi-menu-down]="styleVariablesExpanded['font']"
+                    [class.mdi-menu-right]="!styleVariablesExpanded['font']"
+                  ></span>
+                </div>
+                <div class="style-variable-content" *ngIf="styleVariablesExpanded['font']">
+                  <div
+                    class="style-variable-field"
+                    *ngFor="let key of getStyleVariableKeys('font')"
+                  >
+                    <label>{{ formatVariableLabel(key) }}</label>
+                    <div class="style-variable-input-wrapper">
+                      <input
+                        type="text"
+                        class="style-variable-input"
+                        [value]="styleVariables.font[key]"
+                        (input)="updateStyleVariable('font', key, $any($event.target).value)"
+                        placeholder="Enter value"
+                      />
+                      <span class="mdi mdi-menu-down style-variable-dropdown"></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- CSS Sub-tab -->
+            <div class="sub-tab-panel" *ngIf="activeStyleSubTab === 'css'">
+              <div class="css-editor-container">
+                <div class="css-editor-header">
+                  <span class="css-editor-info" *ngIf="cssSelector">
+                    Editing: {{ cssSelector }}
+                  </span>
+                  <span class="css-editor-info" *ngIf="!cssSelector">
+                    Select a component to edit CSS
+                  </span>
+                  <button
+                    class="css-update-btn"
+                    (click)="updateCssFromCode()"
+                    [disabled]="
+                      !cssSelector ||
+                      cssCode.trim() === '' ||
+                      cssCode.includes('Select a component')
+                    "
+                  >
+                    <span class="mdi mdi-check"></span>
+                    Update
+                  </button>
+                </div>
+                <textarea
+                  class="css-editor"
+                  [(ngModel)]="cssCode"
+                  placeholder="/* Select a component to edit its CSS */"
+                  spellcheck="false"
+                  (focus)="updateCssCode()"
+                ></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

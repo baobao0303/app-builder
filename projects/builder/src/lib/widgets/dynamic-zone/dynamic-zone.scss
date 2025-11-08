@@ -6,9 +6,51 @@
 /* Items inside DynamicZone */
 .dz-item {
   position: relative;
+  transition: outline 0.1s ease-in-out;
 }
 
-:host ::ng-deep .dz-item.dz-selected {
+/* Hover highlight - only when hovering */
+.dz-hover-highlight {
+  outline: 2px solid #60a5fa !important; /* A semi-transparent blue outline */
+  outline-offset: 2px !important;
+  cursor: pointer;
+}
+
+/* Ensure hover highlight takes priority even when selected */
+:host ::ng-deep .dz-item.dz-hover-highlight {
+  outline: 2px solid #60a5fa !important;
+  outline-offset: 2px !important;
+}
+
+/* When both selected and hovered, show solid outline (hover takes priority) */
+:host ::ng-deep .dz-item.dz-selected.dz-hover-highlight {
+  outline: 2px solid #60a5fa !important;
+  outline-offset: 2px !important;
+}
+
+/* Hover Label Styles */
+:host ::ng-deep .dz-hover-label {
+  background-color: #3b82f6; /* blue-500 */
+  color: #ffffff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: none; /* Remove shadow to avoid dark block effect */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  line-height: 1.4;
+  user-select: none;
+  position: absolute;
+  z-index: 10000;
+  pointer-events: none;
+  border: none; /* Ensure no border */
+  outline: none; /* Ensure no outline */
+}
+
+/* Selected state - dashed outline (only when NOT hovering) */
+:host ::ng-deep .dz-item.dz-selected:not(.dz-hover-highlight) {
   outline: 2px dashed #3b82f6 !important;
   outline-offset: 0 !important;
   position: relative;
@@ -74,18 +116,34 @@
 }
 
 /* Đặc biệt cho carousel - cho phép scroll nhưng không tràn ra ngoài */
-.dz-item app-voucher-carousel {
+app-voucher-carousel.dz-item {
   display: block !important;
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
-  overflow: hidden !important;
+  overflow: visible !important;
   min-width: 0 !important;
 }
 
-.dz-item app-voucher-carousel ::ng-deep .p-carousel,
-.dz-item app-voucher-carousel ::ng-deep .p-carousel-container,
-.dz-item app-voucher-carousel ::ng-deep .p-carousel-items-container {
+app-voucher-carousel.dz-item ::ng-deep .vcw-root {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+app-voucher-carousel.dz-item ::ng-deep .vcw-carousel-inner {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+app-voucher-carousel.dz-item ::ng-deep .p-carousel,
+app-voucher-carousel.dz-item ::ng-deep .p-carousel-container,
+app-voucher-carousel.dz-item ::ng-deep .p-carousel-items-container {
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box !important;

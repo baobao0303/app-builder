@@ -15,7 +15,7 @@ import { Component, ElementRef, ViewChild, ViewContainerRef } from '@angular/cor
         width: 100%;
       }
       .section {
-        padding: 16px;
+        padding: 12px;
         border: 1px dashed #cbd5e1;
         background: #f8fafc;
         min-height: 100px;
@@ -23,6 +23,18 @@ import { Component, ElementRef, ViewChild, ViewContainerRef } from '@angular/cor
         width: 100%;
         box-sizing: border-box;
         transition: all 0.2s;
+      }
+      /* Tablet: medium padding */
+      @media (min-width: 768px) {
+        .section {
+          padding: 16px;
+        }
+      }
+      /* Desktop: larger padding */
+      @media (min-width: 1024px) {
+        .section {
+          padding: 24px;
+        }
       }
       .section.dz-selected {
         border: 2px solid #60a5fa;
