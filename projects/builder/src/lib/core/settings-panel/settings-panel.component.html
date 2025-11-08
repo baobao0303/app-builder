@@ -1,0 +1,63 @@
+<div class="settings-panel">
+  <div class="panel-tabs">
+    <button 
+      class="tab-button" 
+      [class.active]="activeTab === 'content'" 
+      (click)="activeTab = 'content'">
+      Content
+    </button>
+    <button 
+      class="tab-button" 
+      [class.active]="activeTab === 'style'" 
+      (click)="activeTab = 'style'">
+      Style
+    </button>
+    <button 
+      class="tab-button" 
+      [class.active]="activeTab === 'advanced'" 
+      (click)="activeTab = 'advanced'">
+      Advanced
+    </button>
+  </div>
+
+  <div class="panel-content">
+    <div *ngIf="activeTab === 'content'" class="content-tab">
+      <div class="attributes-section">
+        <div class="section-header">Attributes</div>
+        @for (trait of traits; track trait.getId()) {
+        <div class="trait-item">
+          <label class="trait-label">{{ trait.getLabel() }}</label>
+          <div class="trait-input">
+            @if (trait.getType() === 'select' && trait.getOptions()) {
+            <select (change)="updateTrait(trait, $event)">
+              @for (opt of trait.getOptions(); track opt.value) {
+              <option [value]="opt.value" [selected]="opt.value === trait.getValue()">
+                {{ opt.label }}
+              </option>
+              }
+            </select>
+            } @else if (trait.getType() === 'checkbox') {
+            <input type="checkbox" [checked]="trait.getValue()" (change)="updateTrait(trait, $event)" />
+            } @else {
+            <input
+              [type]="trait.getType()"
+              [value]="trait.getValue()"
+              (input)="updateTrait(trait, $event)"
+            />
+            }
+          </div>
+        </div>
+        }
+      </div>
+    </div>
+    <div *ngIf="activeTab === 'style'">
+      <!-- Style Manager content will go here -->
+      <p>Style Tab</p>
+    </div>
+    <div *ngIf="activeTab === 'advanced'">
+      <!-- Advanced settings will go here -->
+      <p>Advanced Tab</p>
+    </div>
+  </div>
+</div>
+

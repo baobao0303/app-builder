@@ -1,58 +1,36 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 
-export type AssetType = 'image' | 'video' | 'audio' | 'file';
-
-export interface AssetItem {
+export interface Asset {
   id: string;
-  type: AssetType;
+  type: 'image' | 'video';
   src: string;
-  width?: number;
-  height?: number;
-  sizeBytes?: number;
-  name?: string;
-  meta?: Record<string, any>;
+  name: string;
 }
 
-@Injectable({ providedIn: 'root' })
+@Injectable({
+  providedIn: 'root',
+})
 export class AssetManagerService {
-  private assetsSubject = new BehaviorSubject<AssetItem[]>([]);
-  readonly assets$ = this.assetsSubject.asObservable();
+  private assets = new BehaviorSubject<Asset[]>([]);
 
-  getAssets(): AssetItem[] {
-    return this.assetsSubject.getValue();
+  assets$ = this.assets.asObservable();
+
+  addAsset(asset: Omit<Asset, 'id'>): void {
+    const newAsset: Asset = {
+      ...asset,
+      id: `asset-${Date.now()}`,
+    };
+    const currentAssets = this.assets.getValue();
+    this.assets.next([...currentAssets, newAsset]);
   }
 
-  add(asset: AssetItem): void {
-    const list = this.getAssets();
-    const existingIndex = list.findIndex(a => a.id === asset.id);
-    if (existingIndex >= 0) {
-      const updated = [...list];
-      updated[existingIndex] = { ...updated[existingIndex], ...asset };
-      this.assetsSubject.next(updated);
-      return;
-    }
-    this.assetsSubject.next([...list, asset]);
+  removeAsset(id: string): void {
+    const currentAssets = this.assets.getValue();
+    this.assets.next(currentAssets.filter(asset => asset.id !== id));
   }
 
-  addMany(assets: AssetItem[]): void {
-    const byId = new Map(this.getAssets().map(a => [a.id, a] as const));
-    for (const a of assets) byId.set(a.id, a);
-    this.assetsSubject.next(Array.from(byId.values()));
-  }
-
-  update(id: string, partial: Partial<AssetItem>): void {
-    const list = this.getAssets().map(a => (a.id === id ? { ...a, ...partial } : a));
-    this.assetsSubject.next(list);
-  }
-
-  remove(id: string): void {
-    this.assetsSubject.next(this.getAssets().filter(a => a.id !== id));
-  }
-
-  clear(): void {
-    this.assetsSubject.next([]);
+  getAssets(): Asset[] {
+    return this.assets.getValue();
   }
 }
-
-

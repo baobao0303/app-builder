@@ -1,0 +1,8 @@
+<div class="image-source-trait-container">
+  <input type="text" [(ngModel)]="value" (ngModelChange)="valueChange.emit($event)" placeholder="Enter image URL" class="trait-input">
+  <button (click)="openAssetManager()" class="trait-button">
+    <span class="mdi mdi-folder-image-outline"></span>
+    Choose Image
+  </button>
+</div>
+

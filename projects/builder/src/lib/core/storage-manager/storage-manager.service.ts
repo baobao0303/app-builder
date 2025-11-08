@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { StorageAdapter, ProjectData } from './adapters/storage-adapter.interface';
 import { LocalStorageAdapter } from './adapters/local-storage.adapter';
 import { RemoteStorageAdapter } from './adapters/remote-storage.adapter';
-import { AssetItem } from '../asset-manager/asset-manager.service';
+import { Asset } from '../asset-manager/asset-manager.service';
 
 /**
  * Storage Manager Service - Angular version
@@ -144,7 +144,7 @@ export class StorageManagerService {
   /**
    * Store assets (images, videos, etc.)
    */
-  async storeAssets(assets: AssetItem[]): Promise<void> {
+  async storeAssets(assets: Asset[]): Promise<void> {
     if (!this.currentStorage) {
       throw new Error('No storage adapter selected');
     }
@@ -163,14 +163,14 @@ export class StorageManagerService {
   /**
    * Load assets (images, videos, etc.)
    */
-  async loadAssets(): Promise<AssetItem[]> {
+  async loadAssets(): Promise<Asset[]> {
     if (!this.currentStorage) {
       return [];
     }
 
     try {
       const data = await this.currentStorage.load();
-      return (data?.assets as AssetItem[]) || [];
+      return (data?.assets as Asset[]) || [];
     } catch (error) {
       console.error('Load assets failed:', error);
       return [];
@@ -180,7 +180,7 @@ export class StorageManagerService {
   /**
    * Store project data with assets
    */
-  async storeWithAssets(data: ProjectData, assets: AssetItem[]): Promise<void> {
+  async storeWithAssets(data: ProjectData, assets: Asset[]): Promise<void> {
     if (!this.currentStorage) {
       throw new Error('No storage adapter selected');
     }
@@ -201,14 +201,14 @@ export class StorageManagerService {
   /**
    * Load project data with assets
    */
-  async loadWithAssets(): Promise<{ data: ProjectData | null; assets: AssetItem[] }> {
+  async loadWithAssets(): Promise<{ data: ProjectData | null; assets: Asset[] }> {
     if (!this.currentStorage) {
       return { data: null, assets: [] };
     }
 
     try {
       const data = await this.currentStorage.load();
-      const assets = (data?.assets as AssetItem[]) || [];
+      const assets = (data?.assets as Asset[]) || [];
       return { data, assets };
     } catch (error) {
       console.error('Load failed:', error);

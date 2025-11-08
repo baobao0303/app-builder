@@ -1,0 +1,48 @@
+:host {
+  display: block;
+}
+
+.image-source-trait-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trait-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+  color: #333;
+
+  &:focus {
+    outline: none;
+    border-color: #1976d2;
+    box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.1);
+  }
+}
+
+.trait-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #333;
+  white-space: nowrap;
+
+  &:hover {
+    background: #e0e0e0;
+  }
+
+  .mdi {
+    font-size: 16px;
+  }
+}
+

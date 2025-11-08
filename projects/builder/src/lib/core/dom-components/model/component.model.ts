@@ -81,7 +81,7 @@ export class ComponentModel {
   }
 
   setStyle(style: Record<string, any>): void {
-    this._style = { ...this._style, ...style };
+    this._style = { ...style };
   }
 
   getClasses(): string[] {

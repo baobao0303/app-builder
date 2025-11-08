@@ -1,0 +1,95 @@
+/* Settings Panel Styles */
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb; /* cool-gray-200 */
+}
+
+.tab-button {
+  flex: 1;
+  padding: 12px 8px;
+  background-color: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+  color: #6b7280; /* cool-gray-500 */
+  transition: all 0.2s ease-in-out;
+
+  &:hover {
+    background-color: #f9fafb; /* cool-gray-50 */
+    color: #1f2937; /* cool-gray-800 */
+  }
+
+  &.active {
+    color: #3b82f6; /* blue-500 */
+    border-bottom-color: #3b82f6;
+    font-weight: 600;
+  }
+}
+
+.panel-content {
+  padding: 16px;
+  flex: 1;
+  overflow-y: auto;
+  background-color: #f9fafb; /* cool-gray-50 */
+}
+
+.attributes-section {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb; /* cool-gray-200 */
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.section-header {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937; /* cool-gray-800 */
+  margin-bottom: 16px;
+}
+
+.trait-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.trait-label {
+  flex: 1;
+  font-size: 14px;
+  color: #4b5563; /* cool-gray-600 */
+}
+
+.trait-input {
+  flex: 2;
+  
+  input,
+  select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db; /* cool-gray-300 */
+    border-radius: 6px;
+    font-size: 14px;
+    background-color: #ffffff;
+    transition: border-color 0.2s;
+
+    &:focus {
+      outline: none;
+      border-color: #3b82f6; /* blue-500 */
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+  }
+
+  input[type="checkbox"] {
+    width: auto;
+    height: 16px;
+    width: 16px;
+  }
+}
+

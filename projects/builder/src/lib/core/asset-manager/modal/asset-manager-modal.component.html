@@ -1,0 +1,29 @@
+<div class="asset-manager-modal-overlay" (click)="onClose()">
+  <div class="asset-manager-modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Asset Manager</h3>
+      <button class="close-btn" (click)="onClose()">
+        <span class="mdi mdi-close"></span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="assets-toolbar">
+        <button class="btn btn-primary" (click)="triggerFileInput()">
+          <span class="mdi mdi-upload"></span>
+          Upload
+        </button>
+      </div>
+      <div class="assets-grid">
+        <div *ngIf="assets.length === 0" class="no-assets-message">
+          No assets found. Click Upload to add some.
+        </div>
+        <div *ngFor="let asset of assets" class="asset-item" (click)="onSelectAsset(asset)">
+          <img *ngIf="asset.type === 'image'" [src]="asset.src" class="asset-thumbnail">
+          <video *ngIf="asset.type === 'video'" [src]="asset.src" class="asset-thumbnail" muted></video>
+          <div class="asset-name">{{ asset.name }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+

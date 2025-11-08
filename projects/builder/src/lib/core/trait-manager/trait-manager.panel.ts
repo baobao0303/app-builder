@@ -3,6 +3,9 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AutoCompleteModule } from 'primeng/autocomplete';
 import { ColorPickerModule } from 'primeng/colorpicker';
+import { InputTextModule } from 'primeng/inputtext';
+import { ButtonModule } from 'primeng/button';
+import { AccordionModule } from 'primeng/accordion';
 import { TraitManagerService } from './trait-manager.service';
 import { TraitModel } from './model/trait.model';
 
@@ -13,7 +16,15 @@ import { TraitModel } from './model/trait.model';
 @Component({
   selector: 'app-trait-manager-panel',
   standalone: true,
-  imports: [CommonModule, FormsModule, AutoCompleteModule, ColorPickerModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    AutoCompleteModule,
+    ColorPickerModule,
+    InputTextModule,
+    ButtonModule,
+    AccordionModule,
+  ],
   templateUrl: './trait-manager.panel.html',
   styleUrls: ['./trait-manager.panel.scss'],
 })
@@ -62,6 +73,23 @@ export class TraitManagerPanelComponent implements OnInit, DoCheck {
   protected maxWidth: string = 'auto';
   protected maxHeight: string = 'auto';
 
+  // Dropdown options
+  protected displayOptions = [
+    { label: 'Block', value: 'block' },
+    { label: 'Inline', value: 'inline' },
+    { label: 'Inline Block', value: 'inline-block' },
+    { label: 'Flex', value: 'flex' },
+    { label: 'Grid', value: 'grid' },
+    { label: 'None', value: 'none' },
+  ];
+
+  protected flexDirectionOptions = [
+    { label: 'Ngang (Row)', value: 'row' },
+    { label: 'Dọc (Column)', value: 'column' },
+    { label: 'Ngang đảo (Row Reverse)', value: 'row-reverse' },
+    { label: 'Dọc đảo (Column Reverse)', value: 'column-reverse' },
+  ];
+
   // Color controls
   protected color: string = '#000000';
   protected backgroundColor: string = 'transparent';
@@ -92,41 +120,38 @@ export class TraitManagerPanelComponent implements OnInit, DoCheck {
     const el = this.selected as HTMLElement | null;
     if (!el) return 'row';
 
-    // For app-row component, find .row-inner inside
+    // For app-row component, find .row.dz-row or .column.dz-column inside
     const tagName = el.tagName?.toLowerCase();
     if (tagName === 'app-row') {
-      const rowInner = el.querySelector('.row-inner') as HTMLElement;
-      if (rowInner) {
-        return rowInner.style.flexDirection || 'row';
+      const container = el.querySelector(
+        '.row.dz-row, .column.dz-column, .dz-row, .dz-column'
+      ) as HTMLElement;
+      if (container) {
+        return container.style.flexDirection || 'row';
       }
     }
 
-    // For row components, check .row-inner element
-    if (el.classList.contains('row') || el.classList.contains('dz-row')) {
-      const rowInner = el.querySelector('.row-inner') as HTMLElement;
-      if (rowInner) {
-        return rowInner.style.flexDirection || 'row';
-      }
+    // For row/column components, check container element directly
+    if (
+      el.classList.contains('row') ||
+      el.classList.contains('dz-row') ||
+      el.classList.contains('column') ||
+      el.classList.contains('dz-column')
+    ) {
+      return el.style.flexDirection || 'row';
     }
 
-    // Check if element contains .row-inner
-    const rowInner = el.querySelector('.row-inner') as HTMLElement;
-    if (rowInner) {
-      return rowInner.style.flexDirection || 'row';
-    }
-
-    // Check parent element for row-inner
+    // Check parent element for row/column container
     let parent = el.parentElement;
     while (parent) {
       if (
         parent.tagName?.toLowerCase() === 'app-row' ||
         parent.classList.contains('row') ||
-        parent.classList.contains('dz-row')
+        parent.classList.contains('dz-row') ||
+        parent.classList.contains('column') ||
+        parent.classList.contains('dz-column')
       ) {
-        const parentRowInner = parent.querySelector('.row-inner') as HTMLElement;
-        if (parentRowInner) {
-          return parentRowInner.style.flexDirection || 'row';
-        }
+        return parent.style.flexDirection || 'row';
       }
       parent = parent.parentElement;
     }
@@ -155,18 +180,23 @@ export class TraitManagerPanelComponent implements OnInit, DoCheck {
       return true;
     }
 
-    // Check if element contains .row-inner (indicates it's a row component)
-    const rowInner = el.querySelector('.row-inner');
-    if (rowInner) {
+    // Check if element is a row/column component or contains row/column
+    if (
+      el.classList.contains('column') ||
+      el.classList.contains('dz-column') ||
+      el.querySelector('.row.dz-row, .column.dz-column, .dz-row, .dz-column')
+    ) {
       return true;
     }
 
-    // Check parent element for row classes (in case selected element is inside a row)
+    // Check parent element for row/column classes (in case selected element is inside a row/column)
     let parent = el.parentElement;
     while (parent) {
       if (
         parent.classList.contains('row') ||
         parent.classList.contains('dz-row') ||
+        parent.classList.contains('column') ||
+        parent.classList.contains('dz-column') ||
         parent.tagName?.toLowerCase() === 'app-row' ||
         parent.getAttribute('data-widget') === 'row'
       ) {
