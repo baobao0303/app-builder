@@ -25,15 +25,25 @@ export const COMPONENT_CATEGORIES: ComponentCategories = {
     { key: 'card', label: 'Card', icon: 'mdi mdi-card' },
     { key: 'voucher', label: 'Voucher Card', icon: 'mdi mdi-ticket' },
     { key: 'voucher-carousel', label: 'Voucher Carousel', icon: 'mdi mdi-image-multiple' },
+    { key: 'product-card', label: 'Product Card', icon: 'mdi mdi-shopping' },
+    { key: 'discount-badge', label: 'Discount Badge', icon: 'mdi mdi-tag' },
+    { key: 'rating', label: 'Rating', icon: 'mdi mdi-star' },
+    { key: 'price-display', label: 'Price Display', icon: 'mdi mdi-currency-usd' },
+    { key: 'add-to-cart-button', label: 'Add to Cart', icon: 'mdi mdi-cart' },
+    { key: 'pagination', label: 'Pagination', icon: 'mdi mdi-dots-horizontal' },
   ],
   forms: [
     // Thêm form items ở đây
   ],
-  extra: [{ key: 'navbar', label: 'Navbar', icon: 'mdi mdi-menu' }],
+  extra: [
+    { key: 'navbar', label: 'Navbar', icon: 'mdi mdi-menu' },
+    { key: 'category-nav-item', label: 'Category Nav Item', icon: 'mdi mdi-folder' },
+  ],
   layout: [
     { key: 'section', label: 'Section', icon: 'mdi mdi-cube-outline' },
     { key: 'main', label: 'Main', icon: 'mdi mdi-view-dashboard' },
     { key: 'header', label: 'Header', icon: 'mdi mdi-page-layout-header' },
     { key: 'footer', label: 'Footer', icon: 'mdi mdi-page-layout-footer' },
+    { key: 'product-carousel', label: 'Product Carousel', icon: 'mdi mdi-view-carousel' },
   ],
 };

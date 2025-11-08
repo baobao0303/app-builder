@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Output, signal } from '@angular/core';
+import { Component, EventEmitter, Output, Input, signal, OnChanges, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -8,7 +8,7 @@ import { CommonModule } from '@angular/common';
   templateUrl: './navigation.component.html',
   styleUrls: ['./navigation.component.scss'],
 })
-export class NavigationComponent {
+export class NavigationComponent implements OnChanges {
   @Output() toggleLeftSidebar = new EventEmitter<void>();
   @Output() toggleRightSidebar = new EventEmitter<void>();
   @Output() toggleDragMode = new EventEmitter<void>();
@@ -16,12 +16,22 @@ export class NavigationComponent {
   @Output() toggleNavigator = new EventEmitter<void>();
   @Output() download = new EventEmitter<void>();
   @Output() deviceChange = new EventEmitter<'mobile' | 'tablet' | 'desktop'>();
+  @Output() previewBlob = new EventEmitter<void>();
+  @Output() zoomChange = new EventEmitter<number>();
+
+  @Input() zoomLevel: number = 100;
 
   // View mode state
   activeViewMode = signal<'grid' | 'split-vertical' | 'split-horizontal'>('grid');
   activeTool = signal<'hand' | 'layers'>('layers');
   activeDevice = signal<'mobile' | 'tablet' | 'desktop'>('desktop');
-  zoomLevel = signal(100);
+  internalZoomLevel = signal(100);
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['zoomLevel'] && this.zoomLevel !== undefined) {
+      this.internalZoomLevel.set(this.zoomLevel);
+    }
+  }
 
   onToggleLeftSidebar(): void {
     this.toggleLeftSidebar.emit();
@@ -71,8 +81,11 @@ export class NavigationComponent {
     console.log('Navigator toggled');
   }
 
+  @Output() preview = new EventEmitter<void>();
+
   // Preview Actions
   onPreview(): void {
+    this.preview.emit();
     console.log('Preview mode toggled');
   }
 
@@ -95,6 +108,11 @@ export class NavigationComponent {
     console.log('Open in new window');
   }
 
+  onPreviewBlob(): void {
+    this.previewBlob.emit();
+    console.log('Preview with blob');
+  }
+
   // Responsive Actions
   onDeviceChange(device: 'mobile' | 'tablet' | 'desktop'): void {
     this.activeDevice.set(device);
@@ -111,7 +129,8 @@ export class NavigationComponent {
 
   // Zoom Actions
   onZoomChange(level: number): void {
-    this.zoomLevel.set(level);
+    this.internalZoomLevel.set(level);
+    this.zoomChange.emit(level);
     console.log('Zoom level:', level + '%');
   }
 

@@ -60,6 +60,9 @@
       <button class="nav-btn" (click)="onPreview()" title="Preview">
         <i class="mdi mdi-eye-outline"></i>
       </button>
+      <button class="nav-btn" (click)="onPreviewBlob()" title="Preview in New Tab">
+        <i class="mdi mdi-open-in-new"></i>
+      </button>
       <button class="nav-btn" (click)="onFullscreen()" title="Fullscreen">
         <i class="mdi mdi-fullscreen"></i>
       </button>
@@ -123,7 +126,7 @@
     <div class="nav-buttons">
       <select
         class="zoom-select"
-        [value]="zoomLevel()"
+        [value]="internalZoomLevel()"
         (change)="onZoomChange(+$any($event.target).value)"
         title="Zoom Level"
       >

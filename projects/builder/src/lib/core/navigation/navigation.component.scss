@@ -21,6 +21,13 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0; /* Không cho phép thu nhỏ */
+  
+  &.right {
+    flex-shrink: 0;
+    min-width: 0; /* Cho phép flex items thu nhỏ nếu cần */
+    overflow: visible; /* Đảm bảo không bị ẩn */
+  }
 }
 
 .nav-section.center {
@@ -49,6 +56,14 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0; /* Không cho phép thu nhỏ */
+  
+  /* Đảm bảo zoom-select container hiển thị */
+  &:has(.zoom-select) {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
 }
 
 .nav-btn {
@@ -131,24 +146,45 @@
 }
 
 .zoom-select {
-  background: #f0f0f0;
-  border: 1px solid #e0e0e0;
-  color: #333;
-  padding: 6px 8px;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #f0f0f0 !important;
+  border: 1px solid #e0e0e0 !important;
+  color: #333 !important;
+  padding: 6px 24px 6px 8px !important; /* Thêm padding phải cho mũi tên */
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  min-width: 70px !important; /* Đảm bảo có đủ không gian để hiển thị */
+  width: auto !important;
+  height: auto !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  appearance: none !important; /* Loại bỏ style mặc định của browser */
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 8px center !important;
+  background-size: 12px !important;
+  flex-shrink: 0 !important; /* Không cho phép thu nhỏ */
+  margin: 0 !important;
 
   &:hover {
-    background-color: #e8e8e8;
-    border-color: #d0d0d0;
+    background-color: #e8e8e8 !important;
+    border-color: #d0d0d0 !important;
   }
 
   &:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    outline: none !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
+  }
+
+  option {
+    background: #fff;
+    color: #333;
+    padding: 8px;
   }
 }
 

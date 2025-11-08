@@ -341,6 +341,23 @@
   flex-direction: column;
   background: white;
   overflow: hidden;
+  position: relative;
+
+  // Hand tool active (pan mode)
+  &.hand-tool-active {
+    cursor: grab !important;
+    
+    // Disable text selection when hand tool is active
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    
+    &.is-panning,
+    &[style*="cursor: grabbing"] {
+      cursor: grabbing !important;
+    }
+  }
 
   .panel-header {
     padding: 12px 20px;
@@ -349,17 +366,19 @@
     font-weight: 600;
     font-size: 14px;
     color: #333;
+    cursor: default; // Prevent grab cursor on header
   }
 
   .canvas-content {
     flex: 1;
-    overflow: auto;
+    overflow-y: auto; /* Cho phép scroll dọc */
+    overflow-x: hidden; /* Ẩn scroll ngang */
     padding: 20px;
     background: #fafafa;
     transition: transform 0.2s ease, width 0.3s ease, max-width 0.3s ease;
     box-sizing: border-box;
-    height: fit-content;
-    min-height: 100%;
+    height: 100%;
+    min-height: 100%; /* Chiều cao tối thiểu 100% */
     position: relative;
     
     // Pan cursor styles

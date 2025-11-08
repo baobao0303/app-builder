@@ -102,38 +102,60 @@
 
     <div class="tab-content" #tabContent>
       <!-- Assets Tab Panel -->
-      <div class="tab-panel" *ngIf="activeTab === 'assets'">
-        <div class="flex justify-between items-center mb-3">
-          <span class="text-secondary"><i class="mdi mdi-image-multiple-outline"></i> Assets</span>
-          <button
-            class="btn btn-outline-primary btn-sm"
-            title="Upload asset"
-            (click)="triggerFileInput()"
-          >
-            <span>Upload</span>
+      <div class="tab-panel assets-panel" *ngIf="activeTab === 'assets'">
+        <!-- Row 1: Assets Title and Add Button -->
+        <div class="assets-row-1">
+          <span class="assets-title">
+            <i class="mdi mdi-image-multiple-outline"></i>
+            <span>Assets</span>
+          </span>
+          <button class="assets-add-btn" (click)="triggerFileInput()" title="Add asset">
+            <span class="mdi mdi-plus"></span>
           </button>
         </div>
+
+        <!-- Row 2: Search Bar -->
+        <div class="assets-row-2">
+          <input
+            type="text"
+            class="assets-search"
+            placeholder="Search..."
+            [(ngModel)]="assetSearchQuery"
+          />
+        </div>
+
+        <!-- Row 3: Assets Grid -->
         <div class="assets-list">
-          <div *ngIf="assets.length === 0" class="text-secondary text-center p-4">
-            No assets available. Click "Upload" to add images or videos.
+          <div *ngIf="filteredAssets.length === 0" class="assets-empty">
+            <div class="assets-empty-text">
+              <div>No assets</div>
+              <div>available. Click</div>
+              <div>"Upload" to</div>
+              <div>add images or</div>
+              <div>videos.</div>
+            </div>
           </div>
           <div
-            *ngFor="let asset of assets"
+            *ngFor="let asset of filteredAssets"
             class="asset-item"
             draggable="true"
             (dragstart)="onDragStartAsset($event, asset)"
           >
-            <img *ngIf="asset.type === 'image'" [src]="asset.src" class="asset-thumbnail" />
-            <video
-              *ngIf="asset.type === 'video'"
-              [src]="asset.src"
-              class="asset-thumbnail"
-              muted
-            ></video>
-            <div class="asset-name">{{ asset.name }}</div>
-            <button class="asset-delete-btn" (click)="removeAsset(asset.id, $event)">
-              <span class="mdi mdi-close"></span>
-            </button>
+            <div class="asset-thumbnail-wrapper">
+              <img *ngIf="asset.type === 'image'" [src]="asset.src" class="asset-thumbnail" />
+              <video
+                *ngIf="asset.type === 'video'"
+                [src]="asset.src"
+                class="asset-thumbnail"
+                muted
+              ></video>
+            </div>
+            <div class="asset-footer">
+              <div class="asset-name">{{ asset.name }}</div>
+              <button class="asset-delete-btn" (click)="removeAsset(asset.id, $event)">
+                <span class="mdi mdi-delete"></span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

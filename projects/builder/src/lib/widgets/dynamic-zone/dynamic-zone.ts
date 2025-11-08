@@ -808,9 +808,12 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy, O
       }
 
       // Check if clicking on a textual element (heading, paragraph, etc.)
+      // Exclude product-card content from inline editing
+      const isProductCardContent = target.closest('.product-card, app-product-card');
       const isTextualElement =
-        target.matches('h1, h2, h3, h4, h5, h6, p, span, .dz-heading, .dz-text') ||
-        target.closest('h1, h2, h3, h4, h5, h6, p, span, .dz-heading, .dz-text');
+        !isProductCardContent &&
+        (target.matches('h1, h2, h3, h4, h5, h6, p, span, .dz-heading, .dz-text') ||
+          target.closest('h1, h2, h3, h4, h5, h6, p, span, .dz-heading, .dz-text'));
 
       if (isTextualElement) {
         // Don't stop propagation - let inline edit service handle the click
@@ -828,6 +831,13 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy, O
         return;
       }
 
+      // For product card, prevent inline edit from being applied
+      if (isProductCardContent) {
+        e.stopPropagation();
+        this.select(ref);
+        return;
+      }
+
       // For non-textual elements, stop propagation and select
       if ((e as MouseEvent).detail > 0) {
         e.stopPropagation();
@@ -838,7 +848,11 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy, O
 
     // Apply inline edit directive cho textual elements AFTER click handler
     // This ensures select() is called first
+    // Exclude product-card from inline editing
+    const isProductCard = el.closest('.product-card, app-product-card');
+    if (!isProductCard) {
     applyInlineEdit(el, (n) => this.inlineEditService.applyToElement(n));
+    }
 
     const dragStart = (e: DragEvent) => {
       if (this.draggingDisabled) {
@@ -1031,16 +1045,22 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy, O
           ? (ref.instance as any).getChildContainer()
           : null;
 
-      if (!containerVcr || targetContainer !== containerVcr) {
+      // If component has getChildContainer, always use it for external drops
+      // Otherwise, check if targetContainer is valid
+      const finalContainer = containerVcr || targetContainer;
+      if (!finalContainer) {
         this.dragDropManager.endDrag();
         return;
       }
+
+      // For components with getChildContainer, we allow drop even if targetContainer doesn't match
+      // because the component's own container is the correct target
 
       const extPayload = this.dragDropManager.parseExternalPayload(e.dataTransfer);
       const handledExternal = handleExternalDrop(
         {
           parentId,
-          useVcr: containerVcr,
+          useVcr: finalContainer,
           componentRefs: this.componentRefs,
           getContainerRefs: (container, create) => this.getContainerRefs(container, create),
           trackComponentRef: (componentRef, container, options) =>

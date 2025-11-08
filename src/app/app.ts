@@ -525,34 +525,63 @@ export class App implements OnInit {
   }
 
   protected async preview(): Promise<void> {
-    if (!this.dz) return;
-    const inner = this.dz.exportHtml();
-    const editorCss = this.editorService.getCss();
-    const domStyles = this.dz.exportStyles();
-    // 收集页面中当前的 <style> 与 <link rel="stylesheet">（包含组件样式）
-    const pageCss = await this.getTailwindCssFromPage();
-    const combinedCss = `${pageCss}\n${editorCss}\n${domStyles}`;
-    let htmlDoc = this.codeManager.buildHtmlDocument({
-      html: inner,
-      css: combinedCss,
-      title: 'Preview',
-    });
-    const previewScript = `
+    try {
+      console.log('Preview: Starting...');
+      if (!this.dz) {
+        console.error('Preview: DynamicZone is not available');
+        alert('Canvas is not ready. Please wait a moment and try again.');
+        return;
+      }
+
+      console.log('Preview: Exporting HTML...');
+      const inner = this.dz.exportHtml();
+      const editorCss = this.editorService.getCss();
+      const domStyles = this.dz.exportStyles();
+
+      console.log('Preview: Getting Tailwind CSS...');
+      // 收集页面中当前的 <style> 与 <link rel="stylesheet">（包含组件样式）
+      const pageCss = await this.getTailwindCssFromPage();
+      const combinedCss = `${pageCss}\n${editorCss}\n${domStyles}`;
+
+      console.log('Preview: Building HTML document...');
+      let htmlDoc = this.codeManager.buildHtmlDocument({
+        html: inner,
+        css: combinedCss,
+        title: 'Preview',
+      });
+      const previewScript = `
 (function(){
   function initAll(){ var roots=document.querySelectorAll('.vcw-root'); [].forEach.call(roots, initCarousel); }
   function initCarousel(root){ var viewport=root.querySelector('.vcw-viewport'); var track=root.querySelector('.vcw-track'); if(!viewport||!track) return; var prev=root.querySelector('.vcw-prev'); var next=root.querySelector('.vcw-next'); var dotsWrap=root.querySelector('.vcw-dots'); var toggleBtn=root.querySelector('.vcw-toggle'); var page=0; function itemWidth(){ var it=track.querySelector('.vcw-item'); return it?it.getBoundingClientRect().width:320;} function gap(){ var cs=getComputedStyle(track); var g=cs.columnGap||cs.gap||'0'; return parseFloat(g)||0;} function step(){ return itemWidth()+gap(); } function totalPages(){ var s=step(); var excess=Math.max(0, track.scrollWidth - viewport.clientWidth); return Math.max(1, Math.floor(excess/s) + 1);} function ensureControls(){ if(!prev){ prev=document.createElement('button'); prev.className='vcw-arrow vcw-prev'; prev.textContent='\u2039'; viewport.appendChild(prev);} if(!next){ next=document.createElement('button'); next.className='vcw-arrow vcw-next'; next.textContent='\u203A'; viewport.appendChild(next);} if(!dotsWrap){ dotsWrap=document.createElement('div'); dotsWrap.className='vcw-dots'; root.appendChild(dotsWrap);} var tp=totalPages(); dotsWrap.innerHTML=''; for(var i=0;i<tp;i++){ var b=document.createElement('button'); b.type='button'; b.className='vcw-dot'+(i===page?' active':''); (function(idx){ b.addEventListener('click', function(){ page=idx; update();});})(i); dotsWrap.appendChild(b);} } function update(){ var s=step(); viewport.scrollTo({ left: page*s, behavior: 'smooth' }); if(dotsWrap){ var ds=dotsWrap.querySelectorAll('.vcw-dot'); [].forEach.call(ds,function(d,i){ if(d.classList){ if(i===page) d.classList.add('active'); else d.classList.remove('active'); }});} } ensureControls(); if(prev) prev.addEventListener('click', function(){ page=Math.max(0, page-1); update(); }); if(next) next.addEventListener('click', function(){ page=Math.min(totalPages()-1, page+1); update(); }); if(toggleBtn){ var shown=true; var ctrls=[prev,next,dotsWrap]; toggleBtn.textContent='Ẩn điều khiển'; toggleBtn.addEventListener('click', function(){ shown=!shown; ctrls.forEach(function(el){ if(el){ el.style.display = shown ? '' : 'none'; }}); toggleBtn.textContent = shown ? 'Ẩn điều khiển' : 'Hiện điều khiển'; }); } window.addEventListener('resize', function(){ ensureControls(); update(); }); update(); } if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', initAll);} else { initAll(); }
 })();
 `;
-    htmlDoc = htmlDoc.replace('</body>', `<script>${previewScript}<\/script></body>`);
-    const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url, '_blank');
-    if (win) {
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-    } else {
-      window.location.href = url;
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      htmlDoc = htmlDoc.replace('</body>', `<script>${previewScript}<\/script></body>`);
+
+      console.log('Preview: Creating blob...');
+      const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+
+      console.log('Preview: Opening new window...');
+      const win = window.open(url, '_blank');
+      if (win) {
+        console.log('Preview: Window opened successfully');
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      } else {
+        console.warn('Preview: Popup blocked, redirecting...');
+        window.location.href = url;
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }
+    } catch (error) {
+      console.error('Preview error:', error);
+      alert(
+        'Error generating preview: ' + (error instanceof Error ? error.message : String(error))
+      );
     }
+  }
+
+  protected async onPreviewBlob(): Promise<void> {
+    console.log('onPreviewBlob: Called');
+    await this.preview();
   }
 
   protected async saveProject(): Promise<void> {
@@ -673,12 +702,12 @@ export class App implements OnInit {
     this.isHandToolActive.update((v) => !v);
 
     // Update cursor when hand tool is active
-    const canvasContent = document.querySelector('.canvas-content') as HTMLElement;
-    if (canvasContent) {
+    const canvasArea = document.querySelector('.canvas-area') as HTMLElement;
+    if (canvasArea) {
       if (this.isHandToolActive()) {
-        canvasContent.style.cursor = 'grab';
+        canvasArea.style.cursor = 'grab';
       } else {
-        canvasContent.style.cursor = '';
+        canvasArea.style.cursor = '';
       }
     }
 
@@ -838,8 +867,11 @@ export class App implements OnInit {
     event.preventDefault();
     event.stopPropagation();
 
-    // Get mouse position relative to canvas-content (viewport coordinates)
-    const canvasContent = event.currentTarget as HTMLElement;
+    // Get mouse position relative to canvas-area (viewport coordinates)
+    const canvasArea = event.currentTarget as HTMLElement;
+    const canvasContent = canvasArea.querySelector('.canvas-content') as HTMLElement;
+    if (!canvasContent) return;
+
     const rect = canvasContent.getBoundingClientRect();
     const zoomPoint = {
       x: event.clientX - rect.left,
@@ -862,6 +894,14 @@ export class App implements OnInit {
 
   // Pan handlers (for dragging canvas)
   protected onCanvasMouseDown(event: MouseEvent): void {
+    // Don't pan if clicking on panel header or interactive elements
+    const target = event.target as HTMLElement;
+    if (
+      target.closest('.panel-header, button, input, textarea, select, a, [contenteditable="true"]')
+    ) {
+      return;
+    }
+
     // Start panning if:
     // 1. Hand tool is active (click and drag to pan)
     // 2. Space is pressed
@@ -874,12 +914,6 @@ export class App implements OnInit {
       (event.button === 2 && event.shiftKey);
 
     if (shouldPan) {
-      // Don't pan if clicking on interactive elements (buttons, inputs, etc.)
-      const target = event.target as HTMLElement;
-      if (target.closest('button, input, textarea, select, a, [contenteditable="true"]')) {
-        return;
-      }
-
       event.preventDefault();
       event.stopPropagation();
       this.isPanning.set(true);
@@ -887,7 +921,9 @@ export class App implements OnInit {
       this.panStartY = event.clientY;
       this.panStartPanX = this.panX();
       this.panStartPanY = this.panY();
-      (event.currentTarget as HTMLElement).style.cursor = 'grabbing';
+
+      const canvasArea = event.currentTarget as HTMLElement;
+      canvasArea.style.cursor = 'grabbing';
       document.addEventListener('mousemove', this.onCanvasMouseMove);
       document.addEventListener('mouseup', this.onCanvasMouseUp);
     }
@@ -907,9 +943,9 @@ export class App implements OnInit {
     if (!this.isPanning()) return;
 
     this.isPanning.set(false);
-    const canvasContent = document.querySelector('.canvas-content') as HTMLElement;
-    if (canvasContent) {
-      canvasContent.style.cursor = '';
+    const canvasArea = document.querySelector('.canvas-area') as HTMLElement;
+    if (canvasArea) {
+      canvasArea.style.cursor = this.isHandToolActive() ? 'grab' : '';
     }
     document.removeEventListener('mousemove', this.onCanvasMouseMove);
     document.removeEventListener('mouseup', this.onCanvasMouseUp);
@@ -921,7 +957,7 @@ export class App implements OnInit {
     if (
       (event.code === 'Space' && event.target === document.body) ||
       (event.target as HTMLElement)?.tagName === 'BODY' ||
-      (event.target as HTMLElement)?.closest('.canvas-content')
+      (event.target as HTMLElement)?.closest('.canvas-area')
     ) {
       // Prevent default space behavior (scrolling)
       if (
@@ -932,9 +968,9 @@ export class App implements OnInit {
         event.preventDefault();
       }
       this.isSpacePressed = true;
-      const canvasContent = document.querySelector('.canvas-content') as HTMLElement;
-      if (canvasContent && !this.isPanning()) {
-        canvasContent.style.cursor = 'grab';
+      const canvasArea = document.querySelector('.canvas-area') as HTMLElement;
+      if (canvasArea && !this.isPanning()) {
+        canvasArea.style.cursor = 'grab';
       }
     }
   }
@@ -943,9 +979,9 @@ export class App implements OnInit {
   protected onKeyUp(event: KeyboardEvent): void {
     if (event.code === 'Space') {
       this.isSpacePressed = false;
-      const canvasContent = document.querySelector('.canvas-content') as HTMLElement;
-      if (canvasContent && !this.isPanning()) {
-        canvasContent.style.cursor = '';
+      const canvasArea = document.querySelector('.canvas-area') as HTMLElement;
+      if (canvasArea && !this.isPanning()) {
+        canvasArea.style.cursor = this.isHandToolActive() ? 'grab' : '';
       }
     }
   }

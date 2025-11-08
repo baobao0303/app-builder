@@ -1,5 +1,6 @@
 <div class="app-container" (click)="onContainerClick($event)">
   <builder-navigation
+    [zoomLevel]="zoomLevel()"
     (toggleLeftSidebar)="onToggleLeftSidebar()"
     (toggleRightSidebar)="onToggleRightSidebar()"
     (toggleDragMode)="onToggleDragMode()"
@@ -7,6 +8,9 @@
     (toggleNavigator)="onToggleNavigator()"
     (download)="onDownload()"
     (deviceChange)="onDeviceChange($event)"
+    (preview)="onPreviewBlob()"
+    (previewBlob)="onPreviewBlob()"
+    (zoomChange)="setZoom($event)"
   ></builder-navigation>
 
   <!-- Main Layout -->
@@ -33,8 +37,13 @@
     <!-- Center: Canvas -->
     <div
       class="canvas-area"
+      [class.hand-tool-active]="isHandToolActive()"
+      [class.is-panning]="isPanning()"
       [style.flex-basis.%]="centerWidth()"
       [style.max-width.%]="centerWidth()"
+      (wheel)="onCanvasWheel($event)"
+      (mousedown)="onCanvasMouseDown($event)"
+      (contextmenu)="$event.preventDefault()"
     >
       <div class="panel-header">Canvas</div>
       <div
@@ -43,15 +52,11 @@
         [class.device-tablet]="activeDevice() === 'tablet'"
         [class.device-desktop]="activeDevice() === 'desktop'"
         [class.is-panning]="isPanning()"
-        [class.hand-tool-active]="isHandToolActive()"
         [style.transform]="'translate(' + panX() + 'px, ' + panY() + 'px) scale(' + zoomLevel() / 100 + ')'"
         [style.transform-origin]="'0 0'"
         [style.width.px]="activeDevice() === 'desktop' ? null : getViewportWidth()"
         [style.max-width.px]="activeDevice() === 'desktop' ? null : getViewportWidth()"
         [style.min-height.px]="activeDevice() === 'desktop' ? null : getViewportHeight()"
-        (wheel)="onCanvasWheel($event)"
-        (mousedown)="onCanvasMouseDown($event)"
-        (contextmenu)="$event.preventDefault()"
       >
         <app-dynamic-zone
           #dz
@@ -74,7 +79,7 @@
   title="Navigator"
   [initialX]="initialNavigatorX()"
   [initialY]="initialNavigatorY()"
-  [onClose]="closeNavigatorFloating"
+  (closed)="closeNavigatorFloating()"
 >
   <app-navigator-panel
     [rootComponent]="getRootComponent()"

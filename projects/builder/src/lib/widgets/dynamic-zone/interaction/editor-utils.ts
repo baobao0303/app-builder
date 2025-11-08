@@ -4,13 +4,22 @@ export function applyInlineEditDirective(
   element: HTMLElement,
   applier: (el: HTMLElement) => void
 ): void {
+  // Exclude product-card and its children from inline editing
+  const isProductCard = element.closest('.product-card, app-product-card');
+  if (isProductCard) return;
+
   const textualElements = element.querySelectorAll(
     'h1, h2, h3, h4, h5, h6, p, span, .dz-heading, .dz-text'
   ) as NodeListOf<HTMLElement>;
-  textualElements.forEach((el) => applier(el));
+  textualElements.forEach((el) => {
+    // Skip if element is inside product-card
+    if (!el.closest('.product-card, app-product-card')) {
+      applier(el);
+    }
+  });
   const tag = element.tagName.toLowerCase();
   const isTextual = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div'].includes(tag);
-  if (isTextual) applier(element);
+  if (isTextual && !isProductCard) applier(element);
 }
 
 export function getElementLabel(element: HTMLElement): string {

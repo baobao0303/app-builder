@@ -283,7 +283,9 @@ export class SelectionController {
     toolbarRef.changeDetectorRef.detectChanges();
     this.toolbarRef = toolbarRef;
 
-    if (isTextOrHeadingElement(element)) {
+    // Don't show heading toolbar for product-card
+    const isProductCard = element.closest('.product-card, app-product-card');
+    if (!isProductCard && isTextOrHeadingElement(element)) {
       this.showHeadingToolbar(element);
     }
 

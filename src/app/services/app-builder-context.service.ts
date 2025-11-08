@@ -22,6 +22,14 @@ import { NavbarComponent } from '../../../projects/builder/src/lib/widgets/ToolB
 import { MainComponent } from '../../../projects/builder/src/lib/widgets/ToolBoxs/components/basics/main/main';
 import { HeaderComponent } from '../../../projects/builder/src/lib/widgets/ToolBoxs/components/layouts/header/header';
 import { FooterComponent } from '../../../projects/builder/src/lib/widgets/ToolBoxs/components/layouts/footer/footer';
+import { ProductCardComponent } from '../../../projects/builder/src/lib/widgets/components/product-card/product-card.component';
+import { ProductCarouselComponent } from '../../../projects/builder/src/lib/widgets/components/product-carousel/product-carousel.component';
+import { PaginationComponent } from '../../../projects/builder/src/lib/widgets/components/pagination/pagination.component';
+import { DiscountBadgeComponent } from '../../../projects/builder/src/lib/widgets/components/discount-badge/discount-badge.component';
+import { RatingComponent } from '../../../projects/builder/src/lib/widgets/components/rating/rating.component';
+import { PriceDisplayComponent } from '../../../projects/builder/src/lib/widgets/components/price-display/price-display.component';
+import { CategoryNavItemComponent } from '../../../projects/builder/src/lib/widgets/components/category-nav-item/category-nav-item.component';
+import { AddToCartButtonComponent } from '../../../projects/builder/src/lib/widgets/components/add-to-cart-button/add-to-cart-button.component';
 
 @Injectable()
 export class AppBuilderContextService implements BuilderContextConfig {
@@ -48,6 +56,14 @@ export class AppBuilderContextService implements BuilderContextConfig {
     main: MainComponent,
     header: HeaderComponent,
     footer: FooterComponent,
+    'product-card': ProductCardComponent,
+    'product-carousel': ProductCarouselComponent,
+    pagination: PaginationComponent,
+    'discount-badge': DiscountBadgeComponent,
+    rating: RatingComponent,
+    'price-display': PriceDisplayComponent,
+    'category-nav-item': CategoryNavItemComponent,
+    'add-to-cart-button': AddToCartButtonComponent,
   };
 
   readonly componentDefinitions: Record<string, ComponentDefinition> = {
@@ -607,6 +623,54 @@ export class AppBuilderContextService implements BuilderContextConfig {
     voucher: {
       tagName: 'div',
       attributes: { 'data-widget': 'voucher' },
+      components: [],
+    },
+    'product-card': {
+      tagName: 'div',
+      attributes: { 'data-widget': 'product-card' },
+      classes: ['product-card'],
+      components: [],
+    },
+    'product-carousel': {
+      tagName: 'div',
+      attributes: { 'data-widget': 'product-carousel' },
+      classes: ['product-carousel'],
+      components: [],
+    },
+    pagination: {
+      tagName: 'div',
+      attributes: { 'data-widget': 'pagination' },
+      classes: ['pagination'],
+      components: [],
+    },
+    'discount-badge': {
+      tagName: 'div',
+      attributes: { 'data-widget': 'discount-badge' },
+      classes: ['discount-badge'],
+      components: [],
+    },
+    rating: {
+      tagName: 'div',
+      attributes: { 'data-widget': 'rating' },
+      classes: ['rating'],
+      components: [],
+    },
+    'price-display': {
+      tagName: 'div',
+      attributes: { 'data-widget': 'price-display' },
+      classes: ['price-display'],
+      components: [],
+    },
+    'category-nav-item': {
+      tagName: 'div',
+      attributes: { 'data-widget': 'category-nav-item' },
+      classes: ['category-nav-item'],
+      components: [],
+    },
+    'add-to-cart-button': {
+      tagName: 'button',
+      attributes: { 'data-widget': 'add-to-cart-button' },
+      classes: ['add-to-cart-button'],
       components: [],
     },
   };

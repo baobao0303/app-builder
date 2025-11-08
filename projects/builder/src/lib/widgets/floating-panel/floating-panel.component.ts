@@ -1,4 +1,4 @@
-import { Component, Input, ContentChild, TemplateRef, ElementRef, Renderer2, OnInit, OnDestroy } from '@angular/core';
+import { Component, Input, Output, EventEmitter, ContentChild, TemplateRef, ElementRef, Renderer2, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -13,10 +13,10 @@ import { CommonModule } from '@angular/common';
           <span class="title-text">{{ title }}</span>
         </div>
         <div class="floating-panel-controls">
-          <button class="control-btn minimize" (click)="toggleMinimize()" title="Minimize">
+          <button class="control-btn minimize" (click)="toggleMinimize($event)" title="Minimize">
             <span>−</span>
           </button>
-          <button class="control-btn close" (click)="close()" title="Close">
+          <button class="control-btn close" (click)="close($event)" title="Close">
             <span>×</span>
           </button>
         </div>
@@ -107,14 +107,16 @@ import { CommonModule } from '@angular/common';
       .floating-panel-content {
         flex: 1;
         overflow: auto;
-        transition: max-height 0.3s ease;
+        transition: max-height 0.3s ease, opacity 0.3s ease;
         background: #ffffff;
+        max-height: 500px; /* Default max height */
       }
 
       .floating-panel-content.minimized {
-        max-height: 0;
+        max-height: 0 !important;
         overflow: hidden;
         padding: 0;
+        opacity: 0;
       }
     `,
   ],
@@ -188,15 +190,33 @@ export class FloatingPanelComponent implements OnInit, OnDestroy {
     }
   }
 
-  toggleMinimize(): void {
+  toggleMinimize(event: Event): void {
+    event.stopPropagation();
+    event.preventDefault();
     this.isMinimized = !this.isMinimized;
+    console.log('Navigator panel minimized:', this.isMinimized);
   }
 
   @Input() onClose?: () => void;
+  @Output() closed = new EventEmitter<void>();
 
-  close(): void {
+  close(event: Event): void {
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    console.log('Navigator panel close clicked', { hasOnClose: !!this.onClose });
+    
+    // Emit event first
+    this.closed.emit();
+    
+    // Then call callback if provided
     if (this.onClose) {
-      this.onClose();
+      try {
+        this.onClose();
+      } catch (error) {
+        console.error('Error calling onClose callback:', error);
+      }
     } else {
       // Default: hide panel
       const panel = this.elementRef.nativeElement.querySelector('.floating-panel');

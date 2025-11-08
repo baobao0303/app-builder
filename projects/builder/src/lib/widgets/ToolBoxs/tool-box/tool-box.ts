@@ -37,8 +37,18 @@ export class ToolBox implements AfterViewInit, OnDestroy {
   private assetManager = inject(AssetManagerService);
 
   assets: Asset[] = [];
+  assetSearchQuery: string = '';
 
   activeTab: 'assets' | 'components' | 'attributes' | 'styles' = 'assets';
+
+  // Get filtered assets based on search query
+  get filteredAssets(): Asset[] {
+    if (!this.assetSearchQuery.trim()) {
+      return this.assets;
+    }
+    const query = this.assetSearchQuery.toLowerCase().trim();
+    return this.assets.filter((asset) => asset.name.toLowerCase().includes(query));
+  }
 
   // Sub-tab cho Components tab
   activeComponentSubTab: 'components' | 'blocks' = 'components';
