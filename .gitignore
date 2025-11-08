@@ -46,3 +46,5 @@ Thumbs.db
 
 # Legacy library folder
 projects/builder/src/lib/core_{ibrary
+
+core-backup/

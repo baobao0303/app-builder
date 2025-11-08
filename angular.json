@@ -31,7 +31,8 @@
             ],
             "styles": [
               "src/styles.scss",
-              "node_modules/primeicons/primeicons.css"
+              "node_modules/primeicons/primeicons.css",
+              "node_modules/@mdi/font/css/materialdesignicons.min.css"
             ]
           },
           "configurations": {
@@ -90,7 +91,8 @@
             ],
             "styles": [
               "src/styles.scss",
-              "node_modules/primeicons/primeicons.css"
+              "node_modules/primeicons/primeicons.css",
+              "node_modules/@mdi/font/css/materialdesignicons.min.css"
             ]
           }
         }
