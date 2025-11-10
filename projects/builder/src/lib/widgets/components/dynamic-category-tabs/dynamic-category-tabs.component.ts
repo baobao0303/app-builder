@@ -109,6 +109,14 @@ export interface DynamicTab {
       </div>
     </div>
   `,
+  styles: [
+    `
+      :host {
+        display: block;
+        width: 100%;
+      }
+    `,
+  ],
 })
 export class DynamicCategoryTabsComponent {
   private modalService = inject(ModalService);

@@ -11,34 +11,35 @@ import { CommonModule } from '@angular/common';
       <ng-container #container></ng-container>
     </div>
   `,
-  styles: [`
-    :host {
-      display: block;
-      width: 100%;
-    }
-    .tab-panel-content {
-      min-height: 150px;
-      padding: 20px;
-      border: 1px dashed #e2e8f0;
-      border-radius: 8px;
-      background-color: #f8fafc;
-    }
-    .tab-panel-content.drag-over {
+  styles: [
+    `
+      :host {
+        display: block;
+        width: 100%;
+      }
+      .tab-panel-content {
+        height: 150px;
+        overflow-y: auto;
+        padding: 20px;
+        border: 1px dashed #e2e8f0;
+        border-radius: 8px;
+        background-color: #f8fafc;
+      }
+      .tab-panel-content.drag-over {
         border-color: #60a5fa;
         background: #dbeafe;
-    }
-  `]
+      }
+    `,
+  ],
 })
 export class TabPanelComponent {
   @Input() tabId!: string;
   @Input() active = false;
 
-  @ViewChild('container', { read: ViewContainerRef, static: true }) 
+  @ViewChild('container', { read: ViewContainerRef, static: true })
   private viewContainerRef!: ViewContainerRef;
 
   getChildContainer(): ViewContainerRef {
     return this.viewContainerRef;
   }
 }
-
-

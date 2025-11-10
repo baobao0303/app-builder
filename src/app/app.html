@@ -52,7 +52,9 @@
         [class.device-tablet]="activeDevice() === 'tablet'"
         [class.device-desktop]="activeDevice() === 'desktop'"
         [class.is-panning]="isPanning()"
-        [style.transform]="'translate(' + panX() + 'px, ' + panY() + 'px) scale(' + zoomLevel() / 100 + ')'"
+        [style.transform]="
+          'translate(' + panX() + 'px, ' + panY() + 'px) scale(' + zoomLevel() / 100 + ')'
+        "
         [style.transform-origin]="'0 0'"
         [style.width.px]="activeDevice() === 'desktop' ? null : getViewportWidth()"
         [style.max-width.px]="activeDevice() === 'desktop' ? null : getViewportWidth()"
@@ -90,5 +92,5 @@
 
 <!-- Download Modal -->
 @if (showDownloadModal()) {
-  <app-download-modal (close)="showDownloadModal.set(false)"></app-download-modal>
+<app-download-modal (close)="showDownloadModal.set(false)"></app-download-modal>
 }
