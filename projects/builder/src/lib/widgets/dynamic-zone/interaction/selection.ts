@@ -8,6 +8,7 @@ import { DuplicateCommand, MoveCommand } from '../../../core/undo-manager/undo-m
 import { FloatingToolbarComponent } from '../../components/floating-toolbar/floating-toolbar.component';
 import { FloatingToolbarHeadingComponent } from '../../components/floating-toolbar/floating-toobar-heading.component';
 import { isTextOrHeadingElement } from './editor-utils';
+import { DynamicCategoryTabsComponent } from '../../components/dynamic-category-tabs/dynamic-category-tabs.component';
 
 export interface SelectionContext {
   selected?: ComponentRef<any>;
@@ -256,6 +257,10 @@ export class SelectionController {
     const elementIndex = this.ctx.indexOfRef(ref);
     toolbarRef.instance.canMoveUp = elementIndex > 0;
 
+    if (element.tagName.toLowerCase() === 'app-dynamic-category-tabs') {
+      toolbarRef.instance.showAddButton = true;
+    }
+
     toolbarRef.instance.action.subscribe((action: string) => this.handleToolbarAction(action));
     toolbarRef.changeDetectorRef.detectChanges();
 
@@ -384,6 +389,13 @@ export class SelectionController {
 
   handleToolbarAction(action: string): void {
     switch (action) {
+      case 'add': {
+        const selected = this.ctx.getSelected();
+        if (selected && selected.instance instanceof DynamicCategoryTabsComponent) {
+          selected.instance.addNewTab();
+        }
+        break;
+      }
       case 'ai':
         if (this.selectedElement) {
           this.showHeadingToolbar(this.selectedElement);

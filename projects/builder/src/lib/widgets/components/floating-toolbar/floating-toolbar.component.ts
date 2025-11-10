@@ -24,6 +24,9 @@ import { CommonModule } from '@angular/common';
           <button class="toolbar-btn" (click)="actitonAI()" title="AI">
             <i class="pi pi-sparkles"></i>
           </button>
+          <button *ngIf="showAddButton" class="toolbar-btn" (click)="action.emit('add')" title="Add">
+            <i class="pi pi-plus"></i>
+          </button>
           <button
             class="toolbar-btn"
             [class.disabled]="!canMoveUp"
@@ -125,6 +128,7 @@ export class FloatingToolbarComponent implements OnInit, OnDestroy, AfterViewIni
   @Input() targetElement?: HTMLElement;
   @Input() label = 'Element';
   @Input() canMoveUp = true;
+  @Input() showAddButton = false;
   @Output() action = new EventEmitter<string>();
 
   left = 0;

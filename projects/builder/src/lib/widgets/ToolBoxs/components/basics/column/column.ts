@@ -50,9 +50,9 @@ import { Component, ElementRef, ViewChild, ViewContainerRef } from '@angular/cor
       @media (min-width: 768px) {
         .column {
           flex: 1;
-        }
-        .column[style*='width'] {
-          flex: none;
+      }
+      .column[style*='width'] {
+        flex: none;
         }
       }
       .column-label {

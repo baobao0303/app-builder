@@ -36,6 +36,14 @@ export function exportHtmlFrom(container: HTMLElement): string {
       if (angularAttributes.some((a) => attr.name.startsWith(a))) {
         el.removeAttribute(attr.name);
       }
+      // Remove draggable attribute for preview
+      if (attr.name === 'draggable') {
+        el.removeAttribute(attr.name);
+      }
+      // Remove data attributes related to drag-drop
+      if (attr.name.startsWith('data-dz-') || attr.name === 'data-gjs-type') {
+        el.removeAttribute(attr.name);
+      }
     });
 
     if (el.className) {

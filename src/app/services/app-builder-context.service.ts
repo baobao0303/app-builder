@@ -30,6 +30,9 @@ import { RatingComponent } from '../../../projects/builder/src/lib/widgets/compo
 import { PriceDisplayComponent } from '../../../projects/builder/src/lib/widgets/components/price-display/price-display.component';
 import { CategoryNavItemComponent } from '../../../projects/builder/src/lib/widgets/components/category-nav-item/category-nav-item.component';
 import { AddToCartButtonComponent } from '../../../projects/builder/src/lib/widgets/components/add-to-cart-button/add-to-cart-button.component';
+import { CategoryProductCarouselComponent } from '../../../projects/builder/src/lib/widgets/components/category-product-carousel/category-product-carousel.component';
+import { DynamicCategoryTabsComponent } from '../../../projects/builder/src/lib/widgets/components/dynamic-category-tabs/dynamic-category-tabs.component';
+import { TabPanelComponent } from '../../../projects/builder/src/lib/widgets/components/tab-panel/tab-panel.component';
 
 @Injectable()
 export class AppBuilderContextService implements BuilderContextConfig {
@@ -64,6 +67,9 @@ export class AppBuilderContextService implements BuilderContextConfig {
     'price-display': PriceDisplayComponent,
     'category-nav-item': CategoryNavItemComponent,
     'add-to-cart-button': AddToCartButtonComponent,
+    'category-product-carousel': CategoryProductCarouselComponent,
+    'dynamic-category-tabs': DynamicCategoryTabsComponent,
+    'tab-panel': TabPanelComponent,
   };
 
   readonly componentDefinitions: Record<string, ComponentDefinition> = {
@@ -92,7 +98,15 @@ export class AppBuilderContextService implements BuilderContextConfig {
       components: [
         {
           tagName: 'div',
-          classes: ['header-content', 'flex', 'items-center', 'justify-between', 'p-4', 'bg-white', 'shadow-sm'],
+          classes: [
+            'header-content',
+            'flex',
+            'items-center',
+            'justify-between',
+            'p-4',
+            'bg-white',
+            'shadow-sm',
+          ],
           components: [
             {
               tagName: 'div',
@@ -142,7 +156,14 @@ export class AppBuilderContextService implements BuilderContextConfig {
               components: [
                 {
                   tagName: 'button',
-                  classes: ['cta-button', 'px-4', 'py-2', 'bg-blue-600', 'text-white', 'rounded-md'],
+                  classes: [
+                    'cta-button',
+                    'px-4',
+                    'py-2',
+                    'bg-blue-600',
+                    'text-white',
+                    'rounded-md',
+                  ],
                   content: 'Get Started',
                 },
               ],
@@ -157,7 +178,16 @@ export class AppBuilderContextService implements BuilderContextConfig {
       components: [
         {
           tagName: 'div',
-          classes: ['footer-top', 'grid', 'grid-cols-1', 'md:grid-cols-4', 'gap-8', 'p-8', 'bg-gray-900', 'text-white'],
+          classes: [
+            'footer-top',
+            'grid',
+            'grid-cols-1',
+            'md:grid-cols-4',
+            'gap-8',
+            'p-8',
+            'bg-gray-900',
+            'text-white',
+          ],
           components: [
             {
               tagName: 'div',
@@ -671,6 +701,24 @@ export class AppBuilderContextService implements BuilderContextConfig {
       tagName: 'button',
       attributes: { 'data-widget': 'add-to-cart-button' },
       classes: ['add-to-cart-button'],
+      components: [],
+    },
+    'category-product-carousel': {
+      tagName: 'div',
+      attributes: { 'data-widget': 'category-product-carousel' },
+      classes: ['category-product-carousel'],
+      components: [],
+    },
+    'dynamic-category-tabs': {
+      tagName: 'div',
+      attributes: { 'data-widget': 'dynamic-category-tabs' },
+      classes: ['dynamic-category-tabs'],
+      components: [],
+    },
+    'tab-panel': {
+      tagName: 'div',
+      attributes: { 'data-widget': 'tab-panel' },
+      classes: ['tab-panel'],
       components: [],
     },
   };

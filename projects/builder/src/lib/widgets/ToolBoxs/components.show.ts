@@ -38,6 +38,7 @@ export const COMPONENT_CATEGORIES: ComponentCategories = {
   extra: [
     { key: 'navbar', label: 'Navbar', icon: 'mdi mdi-menu' },
     { key: 'category-nav-item', label: 'Category Nav Item', icon: 'mdi mdi-folder' },
+    { key: 'dynamic-category-tabs', label: 'Dynamic Tabs', icon: 'mdi mdi-tab-plus' },
   ],
   layout: [
     { key: 'section', label: 'Section', icon: 'mdi mdi-cube-outline' },
@@ -45,5 +46,6 @@ export const COMPONENT_CATEGORIES: ComponentCategories = {
     { key: 'header', label: 'Header', icon: 'mdi mdi-page-layout-header' },
     { key: 'footer', label: 'Footer', icon: 'mdi mdi-page-layout-footer' },
     { key: 'product-carousel', label: 'Product Carousel', icon: 'mdi mdi-view-carousel' },
+    { key: 'category-product-carousel', label: 'Category Product Carousel', icon: 'mdi mdi-view-grid' },
   ],
 };

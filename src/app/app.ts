@@ -551,8 +551,144 @@ export class App implements OnInit {
       });
       const previewScript = `
 (function(){
-  function initAll(){ var roots=document.querySelectorAll('.vcw-root'); [].forEach.call(roots, initCarousel); }
-  function initCarousel(root){ var viewport=root.querySelector('.vcw-viewport'); var track=root.querySelector('.vcw-track'); if(!viewport||!track) return; var prev=root.querySelector('.vcw-prev'); var next=root.querySelector('.vcw-next'); var dotsWrap=root.querySelector('.vcw-dots'); var toggleBtn=root.querySelector('.vcw-toggle'); var page=0; function itemWidth(){ var it=track.querySelector('.vcw-item'); return it?it.getBoundingClientRect().width:320;} function gap(){ var cs=getComputedStyle(track); var g=cs.columnGap||cs.gap||'0'; return parseFloat(g)||0;} function step(){ return itemWidth()+gap(); } function totalPages(){ var s=step(); var excess=Math.max(0, track.scrollWidth - viewport.clientWidth); return Math.max(1, Math.floor(excess/s) + 1);} function ensureControls(){ if(!prev){ prev=document.createElement('button'); prev.className='vcw-arrow vcw-prev'; prev.textContent='\u2039'; viewport.appendChild(prev);} if(!next){ next=document.createElement('button'); next.className='vcw-arrow vcw-next'; next.textContent='\u203A'; viewport.appendChild(next);} if(!dotsWrap){ dotsWrap=document.createElement('div'); dotsWrap.className='vcw-dots'; root.appendChild(dotsWrap);} var tp=totalPages(); dotsWrap.innerHTML=''; for(var i=0;i<tp;i++){ var b=document.createElement('button'); b.type='button'; b.className='vcw-dot'+(i===page?' active':''); (function(idx){ b.addEventListener('click', function(){ page=idx; update();});})(i); dotsWrap.appendChild(b);} } function update(){ var s=step(); viewport.scrollTo({ left: page*s, behavior: 'smooth' }); if(dotsWrap){ var ds=dotsWrap.querySelectorAll('.vcw-dot'); [].forEach.call(ds,function(d,i){ if(d.classList){ if(i===page) d.classList.add('active'); else d.classList.remove('active'); }});} } ensureControls(); if(prev) prev.addEventListener('click', function(){ page=Math.max(0, page-1); update(); }); if(next) next.addEventListener('click', function(){ page=Math.min(totalPages()-1, page+1); update(); }); if(toggleBtn){ var shown=true; var ctrls=[prev,next,dotsWrap]; toggleBtn.textContent='Ẩn điều khiển'; toggleBtn.addEventListener('click', function(){ shown=!shown; ctrls.forEach(function(el){ if(el){ el.style.display = shown ? '' : 'none'; }}); toggleBtn.textContent = shown ? 'Ẩn điều khiển' : 'Hiện điều khiển'; }); } window.addEventListener('resize', function(){ ensureControls(); update(); }); update(); } if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', initAll);} else { initAll(); }
+  // Disable all drag functionality in preview
+  function disableDrag() {
+    // Remove draggable attributes
+    document.querySelectorAll('[draggable]').forEach(function(el) {
+      el.removeAttribute('draggable');
+    });
+    
+    // Prevent all drag events
+    var dragEvents = ['dragstart', 'drag', 'dragend', 'dragover', 'dragenter', 'dragleave', 'drop'];
+    dragEvents.forEach(function(eventType) {
+      document.addEventListener(eventType, function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }, true);
+    });
+    
+    // Remove drag-related data attributes
+    document.querySelectorAll('[data-dz-container], [data-gjs-type]').forEach(function(el) {
+      el.removeAttribute('data-dz-container');
+      el.removeAttribute('data-gjs-type');
+    });
+  }
+  
+  // Initialize carousel functionality
+  function initAll(){ 
+    disableDrag();
+    var roots=document.querySelectorAll('.vcw-root'); 
+    [].forEach.call(roots, initCarousel); 
+  }
+  
+  function initCarousel(root){ 
+    var viewport=root.querySelector('.vcw-viewport'); 
+    var track=root.querySelector('.vcw-track'); 
+    if(!viewport||!track) return; 
+    var prev=root.querySelector('.vcw-prev'); 
+    var next=root.querySelector('.vcw-next'); 
+    var dotsWrap=root.querySelector('.vcw-dots'); 
+    var toggleBtn=root.querySelector('.vcw-toggle'); 
+    var page=0; 
+    function itemWidth(){ 
+      var it=track.querySelector('.vcw-item'); 
+      return it?it.getBoundingClientRect().width:320;
+    } 
+    function gap(){ 
+      var cs=getComputedStyle(track); 
+      var g=cs.columnGap||cs.gap||'0'; 
+      return parseFloat(g)||0;
+    } 
+    function step(){ 
+      return itemWidth()+gap(); 
+    } 
+    function totalPages(){ 
+      var s=step(); 
+      var excess=Math.max(0, track.scrollWidth - viewport.clientWidth); 
+      return Math.max(1, Math.floor(excess/s) + 1);
+    } 
+    function ensureControls(){ 
+      if(!prev){ 
+        prev=document.createElement('button'); 
+        prev.className='vcw-arrow vcw-prev'; 
+        prev.textContent='\u2039'; 
+        viewport.appendChild(prev);
+      } 
+      if(!next){ 
+        next=document.createElement('button'); 
+        next.className='vcw-arrow vcw-next'; 
+        next.textContent='\u203A'; 
+        viewport.appendChild(next);
+      } 
+      if(!dotsWrap){ 
+        dotsWrap=document.createElement('div'); 
+        dotsWrap.className='vcw-dots'; 
+        root.appendChild(dotsWrap);
+      } 
+      var tp=totalPages(); 
+      dotsWrap.innerHTML=''; 
+      for(var i=0;i<tp;i++){ 
+        var b=document.createElement('button'); 
+        b.type='button'; 
+        b.className='vcw-dot'+(i===page?' active':''); 
+        (function(idx){ 
+          b.addEventListener('click', function(){ 
+            page=idx; 
+            update();
+          });
+        })(i); 
+        dotsWrap.appendChild(b);
+      } 
+    } 
+    function update(){ 
+      var s=step(); 
+      viewport.scrollTo({ left: page*s, behavior: 'smooth' }); 
+      if(dotsWrap){ 
+        var ds=dotsWrap.querySelectorAll('.vcw-dot'); 
+        [].forEach.call(ds,function(d,i){ 
+          if(d.classList){ 
+            if(i===page) d.classList.add('active'); 
+            else d.classList.remove('active'); 
+          }
+        });
+      } 
+    } 
+    ensureControls(); 
+    if(prev) prev.addEventListener('click', function(){ 
+      page=Math.max(0, page-1); 
+      update(); 
+    }); 
+    if(next) next.addEventListener('click', function(){ 
+      page=Math.min(totalPages()-1, page+1); 
+      update(); 
+    }); 
+    if(toggleBtn){ 
+      var shown=true; 
+      var ctrls=[prev,next,dotsWrap]; 
+      toggleBtn.textContent='Ẩn điều khiển'; 
+      toggleBtn.addEventListener('click', function(){ 
+        shown=!shown; 
+        ctrls.forEach(function(el){ 
+          if(el){ 
+            el.style.display = shown ? '' : 'none'; 
+          }
+        }); 
+        toggleBtn.textContent = shown ? 'Ẩn điều khiển' : 'Hiện điều khiển'; 
+      }); 
+    } 
+    window.addEventListener('resize', function(){ 
+      ensureControls(); 
+      update(); 
+    }); 
+    update(); 
+  } 
+  
+  if(document.readyState==='loading'){ 
+    document.addEventListener('DOMContentLoaded', initAll);
+  } else { 
+    initAll(); 
+  }
 })();
 `;
       htmlDoc = htmlDoc.replace('</body>', `<script>${previewScript}<\/script></body>`);
@@ -562,14 +698,23 @@ export class App implements OnInit {
       const url = URL.createObjectURL(blob);
 
       console.log('Preview: Opening new window...');
-      const win = window.open(url, '_blank');
+      // Use window.open with proper features to ensure new tab opens
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
       if (win) {
         console.log('Preview: Window opened successfully');
+        // Focus the new window
+        win.focus();
         setTimeout(() => URL.revokeObjectURL(url), 5000);
       } else {
         console.warn('Preview: Popup blocked, redirecting...');
-        window.location.href = url;
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        // If popup is blocked, try to open in same window
+        const userConfirmed = confirm('Popup blocked. Open preview in current tab?');
+        if (userConfirmed) {
+          window.location.href = url;
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+        } else {
+          URL.revokeObjectURL(url);
+        }
       }
     } catch (error) {
       console.error('Preview error:', error);
