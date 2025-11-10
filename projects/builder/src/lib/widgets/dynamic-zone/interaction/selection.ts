@@ -159,10 +159,20 @@ export interface SelectionControllerContext extends SelectionContext {
 }
 
 export class SelectionController {
+  private resizeHandles: HTMLElement[] = [];
   private toolbarRef?: ComponentRef<FloatingToolbarComponent>;
   private headingToolbarRef?: ComponentRef<FloatingToolbarHeadingComponent>;
   private selectedElement?: HTMLElement;
   private clickOutsideHandler?: (event: MouseEvent) => void;
+
+  private isResizing = false;
+  private initialResizeInfo: {
+    width: number;
+    height: number;
+    x: number;
+    y: number;
+    handle: string;
+  } | null = null;
 
   constructor(private readonly ctx: SelectionControllerContext) {}
 
@@ -185,6 +195,7 @@ export class SelectionController {
     if (el) {
       this.selectedElement = el;
       this.showToolbar(el, ref);
+      this.showResizeHandles(el);
     } else {
       this.hideToolbar();
     }
@@ -442,11 +453,20 @@ export class SelectionController {
     deleteSelected(this.buildHelperContext());
   }
 
+  reShowResizeHandles(): void {
+    if (this.selectedElement) {
+      this.showResizeHandles(this.selectedElement);
+    }
+  }
+
   enableDragMode(): void {
+    this.hideResizeHandles();
     enableDragMode(this.buildHelperContext(), this.selectedElement);
   }
 
   hideToolbar(): void {
+    this.hideResizeHandles();
+
     if (this.clickOutsideHandler) {
       document.removeEventListener('click', this.clickOutsideHandler, true);
       this.clickOutsideHandler = undefined;
@@ -475,6 +495,173 @@ export class SelectionController {
       this.toolbarRef.destroy();
       this.toolbarRef = undefined;
     }
+  }
+
+  private onResizeMouseDown = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const handle = e.target as HTMLElement;
+    const handleType = handle.dataset['handle'];
+    if (!handleType || !this.selectedElement) return;
+
+    this.isResizing = true;
+    const rect = this.selectedElement.getBoundingClientRect();
+
+    this.initialResizeInfo = {
+      width: rect.width,
+      height: rect.height,
+      x: e.clientX,
+      y: e.clientY,
+      handle: handleType,
+    };
+
+    window.addEventListener('mousemove', this.onResizeMouseMove, true);
+    window.addEventListener('mouseup', this.onResizeMouseUp, true);
+  };
+
+  private onResizeMouseMove = (e: MouseEvent) => {
+    if (!this.isResizing || !this.initialResizeInfo || !this.selectedElement) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const dx = e.clientX - this.initialResizeInfo.x;
+    const dy = e.clientY - this.initialResizeInfo.y;
+
+    let newWidth = this.initialResizeInfo.width;
+    let newHeight = this.initialResizeInfo.height;
+
+    const handle = this.initialResizeInfo.handle;
+
+    if (handle.includes('right')) {
+      newWidth += dx;
+    }
+    if (handle.includes('left')) {
+      newWidth -= dx;
+    }
+    if (handle.includes('bottom')) {
+      newHeight += dy;
+    }
+    if (handle.includes('top')) {
+      newHeight -= dy;
+    }
+
+    // Apply new dimensions, ensuring they are not negative
+    this.selectedElement.style.width = `${Math.max(20, newWidth)}px`;
+    this.selectedElement.style.height = `${Math.max(20, newHeight)}px`;
+
+    this.updateResizeHandlesPosition(this.selectedElement);
+  };
+
+  private onResizeMouseUp = (e: MouseEvent) => {
+    if (!this.isResizing) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    this.isResizing = false;
+    this.initialResizeInfo = null;
+
+    window.removeEventListener('mousemove', this.onResizeMouseMove, true);
+    window.removeEventListener('mouseup', this.onResizeMouseUp, true);
+
+    // Here you would typically save the new size to the component model
+    // For now, it's just a visual change.
+    const id = this.ctx.componentRefs.get(this.ctx.getSelected()!);
+    if (id) {
+      const model = this.ctx.componentModelService.getComponent(id);
+      if (model) {
+        const newStyle = {
+          ...model.getStyle(),
+          width: this.selectedElement?.style.width,
+          height: this.selectedElement?.style.height,
+        };
+        this.ctx.componentModelService.updateComponent(id, { style: newStyle });
+      }
+    }
+  };
+
+  private onResizeOrScroll = () => {
+    if (this.selectedElement) {
+      this.updateResizeHandlesPosition(this.selectedElement);
+    }
+  };
+
+  showResizeHandles(element: HTMLElement): void {
+    this.hideResizeHandles(); // Clear any existing handles
+
+    const positions = [
+      'top-left',
+      'top-center',
+      'top-right',
+      'middle-left',
+      'middle-right',
+      'bottom-left',
+      'bottom-center',
+      'bottom-right',
+    ];
+
+    positions.forEach((pos) => {
+      const handle = document.createElement('div');
+      handle.className = `dz-resize-handle ${pos.replace('-', '_')}`;
+      handle.dataset['handle'] = pos;
+      document.body.appendChild(handle);
+      this.resizeHandles.push(handle);
+
+      handle.addEventListener('mousedown', this.onResizeMouseDown);
+    });
+
+    this.updateResizeHandlesPosition(element);
+    window.addEventListener('scroll', this.onResizeOrScroll, true);
+    window.addEventListener('resize', this.onResizeOrScroll, true);
+  }
+
+  updateResizeHandlesPosition(element: HTMLElement): void {
+    if (this.resizeHandles.length === 0) return;
+
+    const rect = element.getBoundingClientRect();
+    const scrollTop = window.scrollY || document.documentElement.scrollTop;
+    const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
+    const handleSize = 8;
+
+    this.resizeHandles.forEach((handle) => {
+      const pos = handle.dataset['handle'];
+      handle.style.position = 'absolute';
+      handle.style.zIndex = '10001';
+
+      // Vertical positioning
+      if (pos?.includes('top')) {
+        handle.style.top = `${rect.top + scrollTop - handleSize / 2}px`;
+      }
+      if (pos?.includes('middle')) {
+        handle.style.top = `${rect.top + scrollTop + rect.height / 2 - handleSize / 2}px`;
+      }
+      if (pos?.includes('bottom')) {
+        handle.style.top = `${rect.bottom + scrollTop - handleSize / 2}px`;
+      }
+
+      // Horizontal positioning
+      if (pos?.includes('left')) {
+        handle.style.left = `${rect.left + scrollLeft - handleSize / 2}px`;
+      }
+      if (pos?.includes('center')) {
+        handle.style.left = `${rect.left + scrollLeft + rect.width / 2 - handleSize / 2}px`;
+      }
+      if (pos?.includes('right')) {
+        handle.style.left = `${rect.right + scrollLeft - handleSize / 2}px`;
+      }
+    });
+  }
+
+  hideResizeHandles(): void {
+    this.resizeHandles.forEach((handle) => {
+      handle.removeEventListener('mousedown', this.onResizeMouseDown);
+      handle.remove();
+    });
+    this.resizeHandles = [];
+    window.removeEventListener('scroll', this.onResizeOrScroll, true);
+    window.removeEventListener('resize', this.onResizeOrScroll, true);
   }
 
   destroy(): void {

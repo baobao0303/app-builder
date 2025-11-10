@@ -111,6 +111,9 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy, O
   // Trạng thái để hiển thị highlight khi kéo vào vùng thả
   protected isDragOver = false;
 
+  private autoScrollInterval: any = null;
+  private scrollableContainer: HTMLElement | null = null;
+
   private ensureContainerRegistered(container: ViewContainerRef): string {
     let id = this.containerIds.get(container);
     if (!id) {
@@ -233,7 +236,41 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy, O
     }
   }
 
+  private getScrollableParent(element: HTMLElement): HTMLElement {
+    let current = element.parentElement;
+    while (current) {
+      // A scrollable element is one that has a scrollbar.
+      // This is determined by checking if its scrollHeight is greater than its clientHeight.
+      const hasScrollbar = current.scrollHeight > current.clientHeight;
+      const style = window.getComputedStyle(current);
+      const isScrollable = style.overflowY === 'auto' || style.overflowY === 'scroll';
+
+      if (hasScrollbar && isScrollable) {
+        // Check for the specific canvas-content class first
+        if (current.classList.contains('canvas-content')) {
+          return current;
+        }
+      }
+      current = current.parentElement;
+    }
+
+    // Fallback to the first parent that has a scrollbar if canvas-content is not found
+    current = element.parentElement;
+    while (current) {
+      const hasScrollbar = current.scrollHeight > current.clientHeight;
+      const style = window.getComputedStyle(current);
+      const isScrollable = style.overflowY === 'auto' || style.overflowY === 'scroll';
+      if (hasScrollbar && isScrollable) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+
+    return document.documentElement || document.body;
+  }
+
   ngAfterViewInit(): void {
+    this.scrollableContainer = this.getScrollableParent(this.hostEl.nativeElement);
     this.lifecycleHandlers = initLifecycle({
       hostEl: this.hostEl?.nativeElement || null,
       deselect: () => this.deselect(),
@@ -429,11 +466,46 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy, O
   }
 
   // Cho phép thả: chặn hành vi mặc định để drop hoạt động
+  private stopAutoScroll(): void {
+    if (this.autoScrollInterval) {
+      clearInterval(this.autoScrollInterval);
+      this.autoScrollInterval = null;
+    }
+  }
+
   onDragOver(ev: DragEvent) {
     ev.preventDefault();
     this.isDragOver = true;
     if (ev.dataTransfer) {
       ev.dataTransfer.dropEffect = 'copy';
+    }
+
+    // Auto-scroll logic
+    if (this.scrollableContainer) {
+      const container = this.scrollableContainer;
+      const isDocument = container === document.documentElement || container === document.body;
+      const containerRect = isDocument
+        ? { top: 0, bottom: window.innerHeight }
+        : container.getBoundingClientRect();
+      const threshold = 80; // px from the edge to trigger scroll
+      const scrollSpeed = 20; // px per interval
+
+      // Scroll down
+      if (containerRect.bottom - ev.clientY < threshold) {
+        this.stopAutoScroll();
+        this.autoScrollInterval = setInterval(() => {
+          container.scrollTop += scrollSpeed;
+        }, 30);
+      }
+      // Scroll up
+      else if (ev.clientY - containerRect.top < threshold) {
+        this.stopAutoScroll();
+        this.autoScrollInterval = setInterval(() => {
+          container.scrollTop -= scrollSpeed;
+        }, 30);
+      } else {
+        this.stopAutoScroll();
+      }
     }
 
     // Calculate drop position and show green line indicator
@@ -489,6 +561,7 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy, O
 
   // Khi thả: lấy key từ dataTransfer và insert widget tại vị trí green line
   onDrop(ev: DragEvent) {
+    this.stopAutoScroll();
     ev.preventDefault();
     ev.stopPropagation(); // Stop event from bubbling further
     this.isDragOver = false;
@@ -642,6 +715,7 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy, O
 
   // Khi rời vùng thả, bỏ highlight
   onDragLeave() {
+    this.stopAutoScroll();
     this.isDragOver = false;
     this.dropIndicator.hide();
     this.hostEl.nativeElement.classList.remove('dz-body-drag');
@@ -851,7 +925,7 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy, O
     // Exclude product-card from inline editing
     const isProductCard = el.closest('.product-card, app-product-card');
     if (!isProductCard) {
-    applyInlineEdit(el, (n) => this.inlineEditService.applyToElement(n));
+      applyInlineEdit(el, (n) => this.inlineEditService.applyToElement(n));
     }
 
     const dragStart = (e: DragEvent) => {
@@ -1093,6 +1167,7 @@ export class DynamicZone extends CoreBase implements AfterViewInit, OnDestroy, O
       if (this.draggingRef === ref) {
         this.draggingRef = undefined;
       }
+      this.selectionController.reShowResizeHandles();
     };
 
     // Use capture phase to ensure select() runs before inline edit

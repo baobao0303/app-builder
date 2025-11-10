@@ -119,6 +119,37 @@
   min-width: 0;
 }
 
+/* Resize Handles */
+.dz-resize-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border: 1px solid #3b82f6; /* blue-500 */
+  border-radius: 2px;
+  z-index: 10001;
+}
+
+.dz-resize-handle.top_left,
+.dz-resize-handle.bottom_right {
+  cursor: nwse-resize;
+}
+
+.dz-resize-handle.top_right,
+.dz-resize-handle.bottom_left {
+  cursor: nesw-resize;
+}
+
+.dz-resize-handle.top_center,
+.dz-resize-handle.bottom_center {
+  cursor: ns-resize;
+}
+
+.dz-resize-handle.middle_left,
+.dz-resize-handle.middle_right {
+  cursor: ew-resize;
+}
+
 /* Đặc biệt cho carousel - cho phép scroll nhưng không tràn ra ngoài */
 app-voucher-carousel.dz-item {
   display: block !important;

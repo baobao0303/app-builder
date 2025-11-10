@@ -35,7 +35,8 @@ import { CommonModule } from '@angular/common';
         border-radius: 8px;
         overflow: hidden;
         background: #fff;
-        width: 320px;
+        max-width: 320px;
+        width: 100%;
         margin: 8px;
         box-shadow: 0 0 3px rgba(0, 0, 0, 0.05);
       }
@@ -43,6 +44,8 @@ import { CommonModule } from '@angular/common';
       .voucher-left {
         position: relative;
         width: 112px;
+        min-width: 112px;
+        flex-shrink: 0;
         text-align: center;
         border-right: 1.5px dashed #f5c0d4;
         background-color: #fff;
@@ -58,6 +61,9 @@ import { CommonModule } from '@angular/common';
         display: flex;
         align-items: center;
         justify-content: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .voucher-logo {
